@@ -463,8 +463,6 @@ function New-HtmlReport {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AVD-DocAssess Report</title>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, securityLevel: 'strict' });</script>
 <style>
 :root { --bg:#0f172a; --panel:#111827; --card:#ffffff; --muted:#64748b; --line:#e2e8f0; --accent:#2563eb; --warn:#b45309; }
 body { margin:0; font-family: Segoe UI, Arial, sans-serif; background:#f8fafc; color:#0f172a; }
@@ -485,7 +483,7 @@ th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); 
 th { background:#f1f5f9; color:#334155; font-weight:600; position:sticky; top:0; }
 .empty { color:var(--muted); font-style:italic; }
 .warning { border-left:4px solid var(--warn); background:#fffbeb; padding:12px 14px; border-radius:8px; }
-.mermaid { background:#f8fafc; border:1px solid var(--line); border-radius:12px; padding:12px; }
+.mermaid { background:#f8fafc; border:1px solid var(--line); border-radius:12px; padding:12px; white-space:pre; overflow-x:auto; font-family:Consolas, monospace; font-size:13px; }
 footer { color:var(--muted); font-size:12px; margin-top:28px; }
 </style>
 </head>
@@ -513,9 +511,8 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 
 <section>
   <h2>Architecture dependency map</h2>
-  <div class="mermaid">
-$mermaid
-  </div>
+  <p class="empty">Mermaid source is embedded for offline/privacy-safe rendering. Paste into a Mermaid renderer if a visual diagram is required.</p>
+  <pre class="mermaid">$(ConvertTo-HtmlSafe $mermaid)</pre>
 </section>
 
 <section>
