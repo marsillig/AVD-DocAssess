@@ -24,9 +24,6 @@
     Skip Connect-AzAccount and use the current Az PowerShell context. Recommended
     for Azure Cloud Shell.
 
-.PARAMETER DryRun
-    Generate a sanitized sample HTML report without Azure calls. Useful for validating report rendering.
-
 .PARAMETER OutputPath
     HTML output path. Defaults to AVD-DocAssess-Report-yyyyMMdd-HHmmss.html.
 
@@ -49,7 +46,6 @@ param(
     [string]$ResourceGroupName,
     [string]$HostPoolName,
     [switch]$UseExistingConnection,
-    [switch]$DryRun,
     [string]$OutputPath,
     [switch]$OpenReport
 )
@@ -164,69 +160,6 @@ function Get-DiagnosticSettingsSafe {
     })
 }
 
-
-function New-MockResourceId {
-    param(
-        [string]$SubscriptionId = '00000000-0000-0000-0000-000000000000',
-        [string]$ResourceGroupName = 'rg-avd-prod',
-        [string]$Provider,
-        [string]$Type,
-        [string]$Name
-    )
-    return "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/$Provider/$Type/$Name"
-}
-
-function New-DryRunData {
-    $subId = '00000000-0000-0000-0000-000000000000'
-    $tenantId = '11111111-1111-1111-1111-111111111111'
-    $rg = 'rg-avd-prod'
-    $vnetId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Network' -Type 'virtualNetworks' -Name 'vnet-avd-prod'
-    $subnetId = "$vnetId/subnets/snet-avd-hosts"
-    $nsgId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Network' -Type 'networkSecurityGroups' -Name 'nsg-avd-hosts'
-    $rtId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Network' -Type 'routeTables' -Name 'rt-avd-hosts'
-    $hpId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.DesktopVirtualization' -Type 'hostPools' -Name 'hp-prod-pooled-01'
-    $wsId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.DesktopVirtualization' -Type 'workspaces' -Name 'ws-avd-prod'
-    $agId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.DesktopVirtualization' -Type 'applicationGroups' -Name 'dag-prod-desktop'
-    $vmId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Compute' -Type 'virtualMachines' -Name 'avd-sh-001'
-    $nicId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Network' -Type 'networkInterfaces' -Name 'nic-avd-sh-001'
-    $lawId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.OperationalInsights' -Type 'workspaces' -Name 'law-avd-prod'
-    $saId = New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.Storage' -Type 'storageAccounts' -Name 'stfslogixprod001'
-
-    $ctx = [pscustomobject]@{
-        Subscription = [pscustomobject]@{ Id = $subId; Name = 'Sample AVD Subscription' }
-        Tenant = [pscustomobject]@{ Id = $tenantId }
-    }
-
-    return [pscustomobject]@{
-        Context = $ctx
-        Scope = "/subscriptions/$subId/resourceGroups/$rg"
-        HostPools = @([pscustomobject]@{ Id=$hpId; Name='hp-prod-pooled-01'; Location='eastus'; HostPoolType='Pooled'; LoadBalancerType='BreadthFirst'; StartVMOnConnect=$true; PublicNetworkAccess='Disabled'; Tags=@{ Environment='Prod'; Owner='EUC' } })
-        Workspaces = @([pscustomobject]@{ Id=$wsId; Name='ws-avd-prod'; Location='eastus'; ApplicationGroupReference=@($agId); Tags=@{ Environment='Prod'; Owner='EUC' } })
-        ApplicationGroups = @([pscustomobject]@{ Id=$agId; Name='dag-prod-desktop'; Location='eastus'; ApplicationGroupType='Desktop'; HostPoolArmPath=$hpId; Tags=@{ Environment='Prod'; Owner='EUC' } })
-        ScalingPlans = @([pscustomobject]@{ Id=(New-MockResourceId -SubscriptionId $subId -ResourceGroupName $rg -Provider 'Microsoft.DesktopVirtualization' -Type 'scalingPlans' -Name 'sp-avd-prod'); Name='sp-avd-prod'; Location='eastus'; TimeZone='Eastern Standard Time'; HostPoolReference=@($hpId); Tags=@{ Environment='Prod' } })
-        SessionHosts = @([pscustomobject]@{ HostPool='hp-prod-pooled-01'; Name='avd-sh-001.contoso.local'; ResourceGroup=$rg; Status='Available'; AllowNewSession=$true; Sessions=3; AgentVersion='1.0.0000.0000'; UpdateState='Succeeded'; VmResourceId=$vmId })
-        SessionHostVms = @([pscustomobject]@{ Id=$vmId; Name='avd-sh-001'; ResourceGroupName=$rg; Location='eastus'; HardwareProfile=[pscustomobject]@{ VmSize='Standard_D4s_v5' }; Zones=@('1'); StorageProfile=[pscustomobject]@{ OsDisk=[pscustomobject]@{ ManagedDisk=[pscustomobject]@{ StorageAccountType='Premium_LRS' } } }; Tags=@{ Environment='Prod'; Role='AVDSessionHost' } })
-        NetworkInterfaces = @([pscustomobject]@{ Id=$nicId; Name='nic-avd-sh-001'; ResourceGroupName=$rg; Location='eastus'; IpConfigurations=@([pscustomobject]@{ PrivateIpAddress='10.10.1.4'; Subnet=[pscustomobject]@{ Id=$subnetId } }); NetworkSecurityGroup=[pscustomobject]@{ Id=$nsgId }; EnableAcceleratedNetworking=$true })
-        VirtualNetworks = @([pscustomobject]@{ Id=$vnetId; Name='vnet-avd-prod'; ResourceGroupName=$rg; Location='eastus'; AddressSpace=[pscustomobject]@{ AddressPrefixes=@('10.10.0.0/16') }; Subnets=@([pscustomobject]@{ Name='snet-avd-hosts'; AddressPrefix='10.10.1.0/24'; NetworkSecurityGroup=[pscustomobject]@{ Id=$nsgId }; RouteTable=[pscustomobject]@{ Id=$rtId } }); Tags=@{ Environment='Prod' } })
-        NetworkSecurityGroups = @([pscustomobject]@{ Id=$nsgId; Name='nsg-avd-hosts'; ResourceGroupName=$rg; Location='eastus'; SecurityRules=@([pscustomobject]@{ Name='Allow-RDP-Private' }); Tags=@{ Environment='Prod' } })
-        RouteTables = @([pscustomobject]@{ Id=$rtId; Name='rt-avd-hosts'; ResourceGroupName=$rg; Location='eastus'; Routes=@([pscustomobject]@{ Name='DefaultToFirewall' }); DisableBgpRoutePropagation=$false; Tags=@{ Environment='Prod' } })
-        PrivateEndpoints = @([pscustomobject]@{ Name='pe-avd-hostpool'; ResourceGroupName=$rg; Location='eastus'; Subnet=[pscustomobject]@{ Id=$subnetId }; PrivateLinkServiceConnections=@([pscustomobject]@{ PrivateLinkServiceId=$hpId }); Tags=@{ Environment='Prod' } })
-        StorageAccounts = @([pscustomobject]@{ Id=$saId; StorageAccountName='stfslogixprod001'; ResourceGroupName=$rg; Location='eastus'; Sku=[pscustomobject]@{ Name='Standard_ZRS' }; Kind='StorageV2'; PublicNetworkAccess='Disabled'; Tags=@{ Purpose='FSLogixProfiles'; Environment='Prod' } })
-        ProfileStorageCandidates = @([pscustomobject]@{ Id=$saId; StorageAccountName='stfslogixprod001'; ResourceGroupName=$rg; Location='eastus'; Sku=[pscustomobject]@{ Name='Standard_ZRS' }; Kind='StorageV2'; PublicNetworkAccess='Disabled'; Tags=@{ Purpose='FSLogixProfiles'; Environment='Prod' } })
-        RoleAssignments = @(
-            [pscustomobject]@{ DisplayName='AVD Admins'; ObjectType='Group'; RoleDefinitionName='Desktop Virtualization Contributor'; Scope=$hpId },
-            [pscustomobject]@{ DisplayName='AVD Users'; ObjectType='Group'; RoleDefinitionName='Desktop Virtualization User'; Scope=$agId }
-        )
-        LogAnalyticsWorkspaces = @([pscustomobject]@{ Id=$lawId; Name='law-avd-prod'; ResourceGroupName=$rg; Location='eastus'; Sku='PerGB2018'; RetentionInDays=90; Tags=@{ Environment='Prod' } })
-        ActivityLogAlerts = @([pscustomobject]@{ Name='al-avd-service-health'; ResourceGroupName=$rg; Location='global'; Enabled=$true; Scopes=@("/subscriptions/$subId"); Tags=@{ Environment='Prod' } })
-        Diagnostics = @(
-            [pscustomobject]@{ ResourceName='hp-prod-pooled-01'; ResourceType='HostPool'; DiagnosticName='diag-avd-hostpool'; WorkspaceId=$lawId; StorageAccountId=$null; EventHubAuthorizationRuleId=$null },
-            [pscustomobject]@{ ResourceName='avd-sh-001'; ResourceType='VirtualMachine'; DiagnosticName='diag-avd-vm'; WorkspaceId=$lawId; StorageAccountId=$null; EventHubAuthorizationRuleId=$null }
-        )
-        GeneratedAt = (Get-Date).ToUniversalTime()
-        Warnings = @('DryRun uses sanitized sample data and makes no Azure calls.')
-    }
-}
 
 function Get-AvdDocumentationData {
     param([object]$Context)
@@ -696,13 +629,8 @@ function Resolve-ReportPath {
 
 function Invoke-Main {
     Write-Host "AVD-DocAssess v$($script:ToolVersion)" -ForegroundColor Cyan
-    if ($DryRun) {
-        Write-Host 'DryRun enabled: generating sanitized sample report without Azure calls.' -ForegroundColor Yellow
-        $data = New-DryRunData
-    } else {
-        $context = Connect-DocAssessAzure
-        $data = Get-AvdDocumentationData -Context $context
-    }
+    $context = Connect-DocAssessAzure
+    $data = Get-AvdDocumentationData -Context $context
     $html = New-HtmlReport -Data $data
     $path = Resolve-ReportPath
     $parent = Split-Path -Parent $path

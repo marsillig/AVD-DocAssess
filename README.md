@@ -63,16 +63,12 @@ Download the generated `AVD-DocAssess-Report.html` from Cloud Shell and open it 
 | `-ResourceGroupName` | Optional resource group scope. | `rg-avd-prod` |
 | `-HostPoolName` | Optional host pool scope. Requires `-ResourceGroupName`. | `hp-prod-pooled-01` |
 | `-UseExistingConnection` | Use the current Az context; recommended in Cloud Shell. | switch |
-| `-DryRun` | Generate a sanitized sample report without Azure calls. | switch |
 | `-OutputPath` | HTML report path. | `./AVD-DocAssess-Report.html` |
 | `-OpenReport` | Open the generated report locally. Ignored in Cloud Shell. | switch |
 
 ## Examples
 
 ```powershell
-# Validate report rendering without Azure calls
-./AVD-DocAssess.ps1 -DryRun -OutputPath ./AVD-DocAssess-Report.html
-
 # Full current subscription
 ./AVD-DocAssess.ps1 -UseExistingConnection
 
