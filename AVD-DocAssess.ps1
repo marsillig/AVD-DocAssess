@@ -216,23 +216,23 @@ function Get-AvdDocumentationData {
             Get-AzWvdSessionHost -ResourceGroupName $hpRg -HostPoolName $hpName -ErrorAction Stop
         })
 
-        foreach ($host in $hosts) {
-            $hostShortName = Get-NameFromSessionHost -SessionHost $host
+        foreach ($sessionHost in $hosts) {
+            $hostShortName = Get-NameFromSessionHost -SessionHost $sessionHost
             $sessionHosts.Add([pscustomobject]@{
                 HostPool = $hpName
                 Name = $hostShortName
                 ResourceGroup = $hpRg
-                Status = $host.Status
-                AllowNewSession = $host.AllowNewSession
-                Sessions = $host.Session
-                AgentVersion = $host.AgentVersion
-                UpdateState = $host.UpdateState
-                VmResourceId = $host.ResourceId
+                Status = $sessionHost.Status
+                AllowNewSession = $sessionHost.AllowNewSession
+                Sessions = $sessionHost.Session
+                AgentVersion = $sessionHost.AgentVersion
+                UpdateState = $sessionHost.UpdateState
+                VmResourceId = $sessionHost.ResourceId
             }) | Out-Null
 
-            if (-not [string]::IsNullOrWhiteSpace($host.ResourceId)) {
-                $vmName = ConvertTo-ShortId $host.ResourceId
-                $vmRg = Get-RgFromArmId $host.ResourceId
+            if (-not [string]::IsNullOrWhiteSpace($sessionHost.ResourceId)) {
+                $vmName = ConvertTo-ShortId $sessionHost.ResourceId
+                $vmRg = Get-RgFromArmId $sessionHost.ResourceId
                 $vm = Invoke-ReadOnly -OperationName "Get-AzVM ($vmName)" -Optional -ScriptBlock {
                     Get-AzVM -ResourceGroupName $vmRg -Name $vmName -ErrorAction Stop
                 }
