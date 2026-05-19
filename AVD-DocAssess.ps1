@@ -601,7 +601,6 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 
 <section>
   <h2>IAM</h2>
-  <p class="warning">IAM data is metadata-sensitive. Review before sharing outside the operating team.</p>
   $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $iamRows)
 </section>
 
