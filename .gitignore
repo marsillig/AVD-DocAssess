@@ -1,0 +1,27 @@
+# Generated reports and local assessment outputs
+AVD-DocAssess-Report-*.html
+AVD-DocAssess-Report-*.json
+*.log
+*.trace
+reports/
+output/
+exports/
+
+# Local secrets / credentials / Azure profile material
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.cer
+*.crt
+.azure/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/
+
+# PowerShell transient files
+*.ps1xml
+*.clixml
