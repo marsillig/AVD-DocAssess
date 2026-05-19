@@ -340,17 +340,18 @@ function Get-AvdDocumentationData {
 function New-TableHtml {
     param(
         [Parameter(Mandatory)][string[]]$Headers,
-        [Parameter(Mandatory)][object[]]$Rows,
+        [AllowNull()][object[]]$Rows,
         [string]$EmptyMessage = 'No records found.'
     )
-    if (-not $Rows -or $Rows.Count -eq 0) {
+    $safeRows = @($Rows)
+    if (-not $safeRows -or $safeRows.Count -eq 0) {
         return "<p class='empty'>$(ConvertTo-HtmlSafe $EmptyMessage)</p>"
     }
     $html = [System.Text.StringBuilder]::new()
     [void]$html.Append('<div class="table-wrap"><table><thead><tr>')
     foreach ($header in $Headers) { [void]$html.Append("<th>$(ConvertTo-HtmlSafe $header)</th>") }
     [void]$html.Append('</tr></thead><tbody>')
-    foreach ($row in $Rows) {
+    foreach ($row in $safeRows) {
         [void]$html.Append('<tr>')
         foreach ($header in $Headers) {
             $value = $row.$header
