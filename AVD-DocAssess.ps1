@@ -86,6 +86,80 @@ function ConvertTo-ShortId {
     return $ResourceId
 }
 
+
+function ConvertTo-FriendlyScope {
+    param([AllowNull()][string]$Scope)
+    if ([string]::IsNullOrWhiteSpace($Scope)) { return '' }
+    if ($Scope -eq '/') { return 'Tenant root' }
+    if ($Scope -match '/managementGroups/([^/]+)$') { return "Management group: $($Matches[1])" }
+    if ($Scope -match '/subscriptions/([^/]+)$') { return "Subscription: $($Matches[1])" }
+    if ($Scope -match '/resourceGroups/([^/]+)$') { return "Resource group: $($Matches[1])" }
+    if ($Scope -match '/providers/([^/]+/[^/]+)/([^/]+)$') { return "$($Matches[1]): $($Matches[2])" }
+    return ConvertTo-ShortId $Scope
+}
+
+function ConvertTo-FriendlyList {
+    param([AllowNull()][object[]]$Values)
+    $items = @($Values | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { ConvertTo-FriendlyScope ([string]$_) })
+    return ($items -join ', ')
+}
+
+function Test-IsAvdRelatedRoleAssignment {
+    param([object]$RoleAssignment, [object]$Data)
+    $scopeText = [string]$RoleAssignment.Scope
+    if ($scopeText -match 'Microsoft\.DesktopVirtualization') { return $true }
+    if ($RoleAssignment.RoleDefinitionName -match 'Desktop Virtualization|Virtual Machine|Network|Monitoring|Reader|Contributor|Owner') {
+        foreach ($hp in @($Data.HostPools)) {
+            $rg = Get-RgFromArmId $hp.Id
+            if ($rg -and $scopeText -match "/resourceGroups/$([regex]::Escape($rg))(\/|$)") { return $true }
+        }
+    }
+    return $false
+}
+
+function New-FindingRows {
+    param([object]$Data)
+    $rows = [System.Collections.Generic.List[object]]::new()
+
+    $unavailableHosts = @($Data.SessionHosts | Where-Object { $_.Status -and $_.Status -ne 'Available' })
+    if ($unavailableHosts.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='High'; Area='Session hosts'; Observation="$($unavailableHosts.Count) session host(s) are not Available"; Recommendation='Review host health, AVD agent status, domain/Entra join, and FSLogix profile dependencies.' }) | Out-Null
+    }
+
+    $publicHostPools = @($Data.HostPools | Where-Object { $_.PublicNetworkAccess -eq 'Enabled' -or [string]::IsNullOrWhiteSpace([string]$_.PublicNetworkAccess) })
+    if ($publicHostPools.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Connectivity'; Observation="$($publicHostPools.Count) host pool(s) allow public network access or did not expose a private-only setting"; Recommendation='Confirm whether AVD Private Link is required for this environment and document the accepted connectivity model.' }) | Out-Null
+    }
+
+    if (@($Data.PrivateEndpoints).Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Private endpoints'; Observation='No private endpoints were discovered in the assessed scope'; Recommendation='If Private Link is part of the target architecture, include the hub/spoke networking resource groups in scope or document why public access is accepted.' }) | Out-Null
+    }
+
+    if (@($Data.ScalingPlans).Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Cost management'; Observation='No AVD scaling plans were discovered'; Recommendation='Document the operating schedule/capacity approach, or configure AVD autoscale for pooled host pools where appropriate.' }) | Out-Null
+    }
+
+    if (@($Data.Diagnostics).Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Monitoring'; Observation='No diagnostic settings were collected for AVD/session host resources'; Recommendation='Send AVD diagnostics to Log Analytics and document retention, alerting, and operational ownership.' }) | Out-Null
+    }
+
+    $lrsProfileStorage = @($Data.ProfileStorageCandidates | Where-Object { $_.Sku.Name -match '_LRS$' })
+    if ($lrsProfileStorage.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='FSLogix storage'; Observation="$($lrsProfileStorage.Count) profile storage candidate(s) use locally redundant storage"; Recommendation='Validate whether ZRS/GZRS is required for the customer availability target and document the decision.' }) | Out-Null
+    }
+
+    $untaggedHostPools = @($Data.HostPools | Where-Object { -not $_.Tags -or $_.Tags.Count -eq 0 })
+    if ($untaggedHostPools.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='Low'; Area='Governance'; Observation="$($untaggedHostPools.Count) host pool(s) have no tags"; Recommendation='Add standard tags such as Environment, Owner, CostCenter, Application, and SupportTeam.' }) | Out-Null
+    }
+
+    if ($rows.Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Info'; Area='Summary'; Observation='No high-level documentation concerns were detected by the current collector'; Recommendation='Review the appendix tables for completeness and validate the architecture narrative with the customer.' }) | Out-Null
+    }
+
+    return @($rows)
+}
+
 function Get-RgFromArmId {
     param([AllowNull()][string]$ResourceId)
     if ([string]::IsNullOrWhiteSpace($ResourceId)) { return $null }
@@ -267,7 +341,7 @@ function Get-AvdDocumentationData {
                 Sessions = $sessionHost.Session
                 AgentVersion = $sessionHost.AgentVersion
                 UpdateState = $sessionHost.UpdateState
-                VmResourceId = $sessionHost.ResourceId
+                VmResource = (ConvertTo-FriendlyScope $sessionHost.ResourceId)
             }) | Out-Null
 
             if (-not [string]::IsNullOrWhiteSpace($sessionHost.ResourceId)) {
@@ -440,7 +514,7 @@ function New-ArchitectureMapHtml {
     $vmItems = New-MapItemsHtml -Items $Data.SessionHostVms -Label { param($x) "VM: $($x.Name) ($($x.HardwareProfile.VmSize))" }
     $nicItems = New-MapItemsHtml -Items $Data.NetworkInterfaces -Label { param($x) "NIC: $($x.Name)" }
     $vnetItems = New-MapItemsHtml -Items $Data.VirtualNetworks -Label { param($x) "VNet: $($x.Name)" }
-    $peItems = New-MapItemsHtml -Items $Data.PrivateEndpoints -Label { param($x) "Private endpoint: $($x.Name)" }
+    $peItems = New-MapItemsHtml -Items $Data.PrivateEndpoints -Label { param($x) "Private endpoint: $($x.Name)" } -EmptyText "No private endpoints discovered"
     $storageItems = New-MapItemsHtml -Items $Data.ProfileStorageCandidates -Label { param($x) "Storage: $($x.StorageAccountName) ($($x.Sku.Name))" }
     $lawItems = New-MapItemsHtml -Items $Data.LogAnalyticsWorkspaces -Label { param($x) "Workspace: $($x.Name)" }
     $diagItems = New-MapItemsHtml -Items $Data.Diagnostics -Label { param($x) "Diagnostic: $($x.ResourceName)" }
@@ -500,6 +574,28 @@ function New-DocumentationGapRows {
     return @($rows)
 }
 
+
+function New-FindingCardsHtml {
+    param([AllowNull()][object[]]$Rows)
+    $safeRows = @($Rows)
+    if ($safeRows.Count -eq 0) { return '<p class="empty">No executive findings generated.</p>' }
+    $html = [System.Text.StringBuilder]::new()
+    [void]$html.Append('<div class="findings-grid">')
+    foreach ($row in $safeRows) {
+        $priority = if ($row.Priority) { [string]$row.Priority } else { 'Info' }
+        $priorityClass = $priority.ToLowerInvariant()
+        if ($priorityClass -notin @('high','medium','low','info')) { $priorityClass = 'info' }
+        [void]$html.Append('<div class="finding-card">')
+        [void]$html.Append("<span class='badge badge-$priorityClass'>$(ConvertTo-HtmlSafe $priority)</span>")
+        [void]$html.Append("<h3>$(ConvertTo-HtmlSafe $row.Area)</h3>")
+        [void]$html.Append("<p><strong>Observation:</strong> $(ConvertTo-HtmlSafe $row.Observation)</p>")
+        [void]$html.Append("<p><strong>Recommended action:</strong> $(ConvertTo-HtmlSafe $row.Recommendation)</p>")
+        [void]$html.Append('</div>')
+    }
+    [void]$html.Append('</div>')
+    return $html.ToString()
+}
+
 function New-HtmlReport {
     param([object]$Data)
 
@@ -518,7 +614,7 @@ function New-HtmlReport {
             Tags = (New-TagSummary $_.Tags)
         }
     })
-    $workspaceRows = @($Data.Workspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; ApplicationGroupReferences=(@($_.ApplicationGroupReference) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $workspaceRows = @($Data.Workspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; ApplicationGroups=(ConvertTo-FriendlyList @($_.ApplicationGroupReference)); Tags=(New-TagSummary $_.Tags) } })
     $appGroupRows = @($Data.ApplicationGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; Type=$_.ApplicationGroupType; HostPool=(ConvertTo-ShortId $_.HostPoolArmPath); Tags=(New-TagSummary $_.Tags) } })
     $scalingRows = @($Data.ScalingPlans | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; TimeZone=$_.TimeZone; HostPoolCount=@($_.HostPoolReference).Count; Tags=(New-TagSummary $_.Tags) } })
     $vmRows = @($Data.SessionHostVms | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Size=$_.HardwareProfile.VmSize; Zones=(@($_.Zones) -join ', '); OSDisk=$_.StorageProfile.OsDisk.ManagedDisk.StorageAccountType; Tags=(New-TagSummary $_.Tags) } })
@@ -528,10 +624,13 @@ function New-HtmlReport {
     $routeRows = @($Data.RouteTables | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RouteCount=@($_.Routes).Count; DisableBgpRoutePropagation=$_.DisableBgpRoutePropagation; Tags=(New-TagSummary $_.Tags) } })
     $peRows = @($Data.PrivateEndpoints | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Subnet=(ConvertTo-ShortId $_.Subnet.Id); Connections=(@($_.PrivateLinkServiceConnections | ForEach-Object { ConvertTo-ShortId $_.PrivateLinkServiceId }) -join ', '); Tags=(New-TagSummary $_.Tags) } })
     $storageRows = @($Data.ProfileStorageCandidates | Sort-Object StorageAccountName | ForEach-Object { [pscustomobject]@{ Name=$_.StorageAccountName; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; Kind=$_.Kind; PublicNetworkAccess=$_.PublicNetworkAccess; Tags=(New-TagSummary $_.Tags) } })
-    $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=$_.Scope } })
+    $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
+    $avdIamRows = @($Data.RoleAssignments | Where-Object { Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
+    $inheritedIamRows = @($Data.RoleAssignments | Where-Object { -not (Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data) } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
     $lawRows = @($Data.LogAnalyticsWorkspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku; RetentionInDays=$_.RetentionInDays; Tags=(New-TagSummary $_.Tags) } })
     $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
-    $alertRows = @($Data.ActivityLogAlerts | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Enabled=$_.Enabled; Scopes=(@($_.Scopes) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $alertRows = @($Data.ActivityLogAlerts | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Enabled=$_.Enabled; Scopes=(ConvertTo-FriendlyList @($_.Scopes)); Tags=(New-TagSummary $_.Tags) } })
+    $findingRows = New-FindingRows -Data $Data
     $gapRows = New-DocumentationGapRows -Data $Data
     $architectureMap = New-ArchitectureMapHtml -Data $Data
 
@@ -564,6 +663,15 @@ th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); 
 th { background:#f1f5f9; color:#334155; font-weight:600; position:sticky; top:0; }
 .empty { color:var(--muted); font-style:italic; }
 .warning { border-left:4px solid var(--warn); background:#fffbeb; padding:12px 14px; border-radius:8px; }
+.report-intro { color:#334155; max-width:1100px; line-height:1.55; }
+.findings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; margin-top:14px; }
+.finding-card { border:1px solid var(--line); border-radius:12px; padding:14px; background:#f8fafc; }
+.badge { display:inline-block; border-radius:999px; padding:3px 9px; font-size:12px; font-weight:700; margin-bottom:8px; }
+.badge-high { background:#fee2e2; color:#991b1b; }
+.badge-medium { background:#fef3c7; color:#92400e; }
+.badge-low { background:#dbeafe; color:#1e40af; }
+.badge-info { background:#dcfce7; color:#166534; }
+.appendix-note { color:#475569; font-size:14px; margin-top:-4px; }
 .arch-map { display:flex; flex-direction:column; gap:18px; }
 .arch-row { display:grid; grid-template-columns:minmax(240px,1fr) 42px minmax(240px,1fr) 42px minmax(240px,1fr); gap:10px; align-items:stretch; }
 .arch-row.secondary { grid-template-columns:repeat(3,minmax(240px,1fr)); }
@@ -597,8 +705,11 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
     <div class="card"><div class="num">$($Data.VirtualNetworks.Count)</div><div class="label">VNets</div></div>
     <div class="card"><div class="num">$($Data.RoleAssignments.Count)</div><div class="label">IAM assignments</div></div>
   </div>
+  <p class="report-intro">This report documents the Azure Virtual Desktop deployment discovered in the selected Azure scope. It highlights the main components, visible dependencies, and items that should be validated with the customer before the design is considered fully documented.</p>
+  <h3>Executive findings</h3>
+  $(New-FindingCardsHtml -Rows $findingRows)
   <h3>Documentation gaps / collection notes</h3>
-  $(New-TableHtml -Headers @('Area','Gap','Action') -Rows $gapRows -EmptyMessage 'No documentation gaps detected by the v1 collector.')
+  $(New-TableHtml -Headers @('Area','Gap','Action') -Rows $gapRows -EmptyMessage 'No documentation gaps detected by the current collector.')
 </section>
 
 <section>
@@ -607,24 +718,28 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 </section>
 
 <section>
-  <h2>AVD inventory</h2>
+  <h2>Technical inventory appendix</h2>
+  <p class="appendix-note">The tables below provide the supporting Azure inventory used to build the customer summary and architecture map.</p>
   <h3>Host pools</h3>
   $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','LoadBalancer','StartVmOnConnect','PublicNetworkAccess','Tags') -Rows $hostPoolRows)
   <h3>Workspaces</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','ApplicationGroupReferences','Tags') -Rows $workspaceRows)
+  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','ApplicationGroups','Tags') -Rows $workspaceRows)
   <h3>Application groups</h3>
   $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','HostPool','Tags') -Rows $appGroupRows)
   <h3>Scaling plans</h3>
   $(New-TableHtml -Headers @('Name','ResourceGroup','Location','TimeZone','HostPoolCount','Tags') -Rows $scalingRows)
   <h3>Session hosts</h3>
-  $(New-TableHtml -Headers @('HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResourceId') -Rows $Data.SessionHosts)
+  $(New-TableHtml -Headers @('HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResource') -Rows $Data.SessionHosts)
   <h3>Session host VMs</h3>
   $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Size','Zones','OSDisk','Tags') -Rows $vmRows)
 </section>
 
 <section>
-  <h2>IAM</h2>
-  $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $iamRows)
+  <h2>IAM access summary</h2>
+  <h3>AVD-related assignments</h3>
+  $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $avdIamRows -EmptyMessage 'No AVD-related role assignments were identified in the assessed scope.')
+  <h3>Inherited / broader-scope assignments</h3>
+  $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $inheritedIamRows -EmptyMessage 'No broader-scope role assignments were collected.')
 </section>
 
 <section>
