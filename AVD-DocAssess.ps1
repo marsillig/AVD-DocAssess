@@ -436,45 +436,82 @@ function New-TagSummary {
     return (($Tags.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')
 }
 
-function New-DependencyMermaid {
+
+function New-ArchitectureMapHtml {
     param([object]$Data)
-    $lines = [System.Collections.Generic.List[string]]::new()
-    $lines.Add('flowchart LR') | Out-Null
-    $lines.Add('  subgraph AVD["Azure Virtual Desktop"]') | Out-Null
-    foreach ($hp in @($Data.HostPools | Select-Object -First 12)) {
-        $safeId = ($hp.Name -replace '[^a-zA-Z0-9]', '_')
-        $lines.Add("    HP_$safeId[`"Host pool: $($hp.Name)`"]") | Out-Null
+
+    function New-MapItemsHtml {
+        param(
+            [object[]]$Items,
+            [scriptblock]$Label,
+            [string]$EmptyText = 'None found',
+            [int]$MaxItems = 8
+        )
+        if (-not $Items -or $Items.Count -eq 0) {
+            return "<li class='muted'>$(ConvertTo-HtmlSafe $EmptyText)</li>"
+        }
+        $html = [System.Text.StringBuilder]::new()
+        foreach ($item in @($Items | Select-Object -First $MaxItems)) {
+            [void]$html.Append("<li>$(ConvertTo-HtmlSafe (& $Label $item))</li>")
+        }
+        if ($Items.Count -gt $MaxItems) {
+            [void]$html.Append("<li class='muted'>+ $($Items.Count - $MaxItems) more</li>")
+        }
+        return $html.ToString()
     }
-    foreach ($ag in @($Data.ApplicationGroups | Select-Object -First 12)) {
-        $safeId = ($ag.Name -replace '[^a-zA-Z0-9]', '_')
-        $lines.Add("    AG_$safeId[`"App group: $($ag.Name)`"]") | Out-Null
-    }
-    foreach ($ws in @($Data.Workspaces | Select-Object -First 8)) {
-        $safeId = ($ws.Name -replace '[^a-zA-Z0-9]', '_')
-        $lines.Add("    WS_$safeId[`"Workspace: $($ws.Name)`"]") | Out-Null
-    }
-    $lines.Add('  end') | Out-Null
-    $lines.Add('  subgraph Compute["Session host compute"]') | Out-Null
-    foreach ($vm in @($Data.SessionHostVms | Select-Object -First 16)) {
-        $safeId = ($vm.Name -replace '[^a-zA-Z0-9]', '_')
-        $lines.Add("    VM_$safeId[`"VM: $($vm.Name)`"]") | Out-Null
-    }
-    $lines.Add('  end') | Out-Null
-    $lines.Add('  subgraph Network["Network"]') | Out-Null
-    foreach ($vnet in @($Data.VirtualNetworks | Select-Object -First 8)) {
-        $safeId = ($vnet.Name -replace '[^a-zA-Z0-9]', '_')
-        $lines.Add("    VNET_$safeId[`"VNet: $($vnet.Name)`"]") | Out-Null
-    }
-    $lines.Add('  end') | Out-Null
-    $lines.Add('  Monitor["Diagnostics / Log Analytics"]') | Out-Null
-    $lines.Add('  IAM["IAM role assignments"]') | Out-Null
-    $lines.Add('  Storage["FSLogix/profile storage candidates"]') | Out-Null
-    if ($Data.HostPools.Count -gt 0 -and $Data.SessionHostVms.Count -gt 0) { $lines.Add('  AVD --> Compute') | Out-Null }
-    if ($Data.SessionHostVms.Count -gt 0 -and $Data.VirtualNetworks.Count -gt 0) { $lines.Add('  Compute --> Network') | Out-Null }
-    if ($Data.ProfileStorageCandidates.Count -gt 0) { $lines.Add('  Compute --> Storage') | Out-Null }
-    $lines.Add('  AVD --> Monitor') | Out-Null
-    $lines.Add('  AVD --> IAM') | Out-Null
-    return ($lines -join "`n")
+
+    $hostPoolItems = New-MapItemsHtml -Items $Data.HostPools -Label { param($x) "Host pool: $($x.Name)" }
+    $workspaceItems = New-MapItemsHtml -Items $Data.Workspaces -Label { param($x) "Workspace: $($x.Name)" }
+    $appGroupItems = New-MapItemsHtml -Items $Data.ApplicationGroups -Label { param($x) "App group: $($x.Name)" }
+    $vmItems = New-MapItemsHtml -Items $Data.SessionHostVms -Label { param($x) "VM: $($x.Name) ($($x.HardwareProfile.VmSize))" }
+    $nicItems = New-MapItemsHtml -Items $Data.NetworkInterfaces -Label { param($x) "NIC: $($x.Name)" }
+    $vnetItems = New-MapItemsHtml -Items $Data.VirtualNetworks -Label { param($x) "VNet: $($x.Name)" }
+    $peItems = New-MapItemsHtml -Items $Data.PrivateEndpoints -Label { param($x) "Private endpoint: $($x.Name)" }
+    $storageItems = New-MapItemsHtml -Items $Data.ProfileStorageCandidates -Label { param($x) "Storage: $($x.StorageAccountName) ($($x.Sku.Name))" }
+    $lawItems = New-MapItemsHtml -Items $Data.LogAnalyticsWorkspaces -Label { param($x) "Workspace: $($x.Name)" }
+    $diagItems = New-MapItemsHtml -Items $Data.Diagnostics -Label { param($x) "Diagnostic: $($x.ResourceName)" }
+    $iamItems = New-MapItemsHtml -Items $Data.RoleAssignments -Label { param($x) "$($x.RoleDefinitionName): $($x.DisplayName)" } -MaxItems 10
+
+    return @"
+<div class="arch-map">
+  <div class="arch-row">
+    <div class="arch-card primary">
+      <div class="arch-icon">🖥️</div>
+      <h3>AVD control plane</h3>
+      <ul>$hostPoolItems$appGroupItems$workspaceItems</ul>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-card">
+      <div class="arch-icon">⚙️</div>
+      <h3>Session host compute</h3>
+      <ul>$vmItems</ul>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-card">
+      <div class="arch-icon">🌐</div>
+      <h3>Network path</h3>
+      <ul>$vnetItems$nicItems$peItems</ul>
+    </div>
+  </div>
+  <div class="arch-row secondary">
+    <div class="arch-card">
+      <div class="arch-icon">💾</div>
+      <h3>Profiles / storage</h3>
+      <ul>$storageItems</ul>
+    </div>
+    <div class="arch-card">
+      <div class="arch-icon">📊</div>
+      <h3>Monitoring</h3>
+      <ul>$lawItems$diagItems</ul>
+    </div>
+    <div class="arch-card">
+      <div class="arch-icon">🔐</div>
+      <h3>IAM access</h3>
+      <ul>$iamItems</ul>
+    </div>
+  </div>
+</div>
+"@
 }
 
 function New-DocumentationGapRows {
@@ -520,7 +557,7 @@ function New-HtmlReport {
     $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
     $alertRows = @($Data.ActivityLogAlerts | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Enabled=$_.Enabled; Scopes=(@($_.Scopes) -join ', '); Tags=(New-TagSummary $_.Tags) } })
     $gapRows = New-DocumentationGapRows -Data $Data
-    $mermaid = New-DependencyMermaid -Data $Data
+    $architectureMap = New-ArchitectureMapHtml -Data $Data
 
     $generated = $Data.GeneratedAt.ToString('yyyy-MM-dd HH:mm:ss UTC')
 
@@ -551,7 +588,18 @@ th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); 
 th { background:#f1f5f9; color:#334155; font-weight:600; position:sticky; top:0; }
 .empty { color:var(--muted); font-style:italic; }
 .warning { border-left:4px solid var(--warn); background:#fffbeb; padding:12px 14px; border-radius:8px; }
-.mermaid { background:#f8fafc; border:1px solid var(--line); border-radius:12px; padding:12px; white-space:pre; overflow-x:auto; font-family:Consolas, monospace; font-size:13px; }
+.arch-map { display:flex; flex-direction:column; gap:18px; }
+.arch-row { display:grid; grid-template-columns:minmax(240px,1fr) 42px minmax(240px,1fr) 42px minmax(240px,1fr); gap:10px; align-items:stretch; }
+.arch-row.secondary { grid-template-columns:repeat(3,minmax(240px,1fr)); }
+.arch-card { border:1px solid #cbd5e1; border-radius:16px; padding:18px; background:linear-gradient(180deg,#ffffff,#f8fafc); box-shadow:0 8px 18px rgba(15,23,42,.06); }
+.arch-card.primary { border-color:#93c5fd; background:linear-gradient(180deg,#eff6ff,#ffffff); }
+.arch-icon { font-size:26px; margin-bottom:6px; }
+.arch-card h3 { margin:0 0 10px; color:#0f172a; font-size:17px; }
+.arch-card ul { margin:0; padding-left:18px; line-height:1.6; }
+.arch-card li { margin:3px 0; }
+.arch-arrow { display:flex; align-items:center; justify-content:center; color:#2563eb; font-size:34px; font-weight:800; }
+.muted { color:var(--muted); font-style:italic; }
+@media (max-width: 1050px) { .arch-row, .arch-row.secondary { grid-template-columns:1fr; } .arch-arrow { transform:rotate(90deg); min-height:30px; } }
 footer { color:var(--muted); font-size:12px; margin-top:28px; }
 </style>
 </head>
@@ -579,8 +627,7 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 
 <section>
   <h2>Architecture dependency map</h2>
-  <p class="empty">Mermaid source is embedded for offline/privacy-safe rendering. Paste into a Mermaid renderer if a visual diagram is required.</p>
-  <pre class="mermaid">$(ConvertTo-HtmlSafe $mermaid)</pre>
+  $architectureMap
 </section>
 
 <section>
