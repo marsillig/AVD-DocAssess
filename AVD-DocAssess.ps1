@@ -152,6 +152,45 @@ function Connect-DocAssessAzure {
     return $context
 }
 
+
+function Get-ObjectPropertyValue {
+    param(
+        [AllowNull()][object]$InputObject,
+        [Parameter(Mandatory)][string[]]$Names
+    )
+    if ($null -eq $InputObject) { return $null }
+    foreach ($name in $Names) {
+        $prop = $InputObject.PSObject.Properties[$name]
+        if ($prop -and -not [string]::IsNullOrWhiteSpace([string]$prop.Value)) { return $prop.Value }
+    }
+    return $null
+}
+
+function Get-CustomerNameFromContext {
+    param([object]$Context)
+
+    $tenantIdValue = $Context.Tenant.Id
+    $tenant = Invoke-ReadOnly -OperationName 'Get-AzTenant' -Optional -ScriptBlock {
+        if ($tenantIdValue) { Get-AzTenant -TenantId $tenantIdValue -ErrorAction Stop } else { Get-AzTenant -ErrorAction Stop | Select-Object -First 1 }
+    }
+
+    $domain = Get-ObjectPropertyValue -InputObject $tenant -Names @('DefaultDomain','PrimaryDomain','Domain','Name')
+    if (-not $domain) {
+        $domains = Get-ObjectPropertyValue -InputObject $tenant -Names @('Domains','VerifiedDomains')
+        if ($domains) {
+            $domain = @($domains | ForEach-Object {
+                if ($_ -is [string]) { $_ } else { Get-ObjectPropertyValue -InputObject $_ -Names @('Name','DomainName','Id') }
+            } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+        }
+    }
+
+    if (-not $domain -and $Context.Account.Id -match '@(.+)$') { $domain = $Matches[1] }
+    if (-not $domain) { $domain = $Context.Subscription.Name }
+    if (-not $domain) { $domain = $tenantIdValue }
+
+    return [string]$domain
+}
+
 function Get-DiagnosticSettingsSafe {
     param([string]$ResourceId)
     if ([string]::IsNullOrWhiteSpace($ResourceId)) { return @() }
@@ -314,6 +353,7 @@ function Get-AvdDocumentationData {
 
     return [pscustomobject]@{
         Context = $Context
+        CustomerName = (Get-CustomerNameFromContext -Context $Context)
         Scope = $scope
         HostPools = $hostPools
         Workspaces = $workspaces
@@ -464,6 +504,8 @@ function New-HtmlReport {
     param([object]$Data)
 
     $ctx = $Data.Context
+    $reportCustomerName = if ($Data.CustomerName) { $Data.CustomerName } else { $ctx.Subscription.Name }
+    $reportTitle = "$(ConvertTo-HtmlSafe $reportCustomerName) - Azure Virtual Desktop Deployment Report"
     $hostPoolRows = @($Data.HostPools | Sort-Object Name | ForEach-Object {
         [pscustomobject]@{
             Name = $_.Name
@@ -501,7 +543,7 @@ function New-HtmlReport {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AVD-DocAssess Report</title>
+<title>$reportTitle</title>
 <style>
 :root { --bg:#0f172a; --panel:#111827; --card:#ffffff; --muted:#64748b; --line:#e2e8f0; --accent:#2563eb; --warn:#b45309; }
 body { margin:0; font-family: Segoe UI, Arial, sans-serif; background:#f8fafc; color:#0f172a; }
@@ -539,7 +581,7 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 </head>
 <body>
 <header>
-  <h1>AVD-DocAssess Report</h1>
+  <h1>$reportTitle</h1>
   <p>Generated: $(ConvertTo-HtmlSafe $generated)</p>
   <p>Subscription: $(ConvertTo-HtmlSafe $ctx.Subscription.Name) ($(ConvertTo-HtmlSafe $ctx.Subscription.Id)) · Tenant: $(ConvertTo-HtmlSafe $ctx.Tenant.Id)</p>
   <p>Scope: $(ConvertTo-HtmlSafe $Data.Scope)</p>
