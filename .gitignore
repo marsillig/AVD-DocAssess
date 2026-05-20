@@ -1,5 +1,6 @@
 # Generated reports and local assessment outputs
 *.html
+!index.html
 !docs/*.html
 !samples/*.sample.html
 AVD-Blueprint-Report.html
