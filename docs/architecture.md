@@ -9,7 +9,7 @@ flowchart LR
   ARM --> AVD["AVD resources"]
   ARM --> Network["VNets / subnets / NSGs / routes / private endpoints"]
   ARM --> IAM["Role assignments"]
-  ARM --> Monitor["Diagnostics / Log Analytics / alerts"]
+  ARM --> Monitor["Diagnostics / Log Analytics"]
   ARM --> Storage["FSLogix storage candidates"]
   Script --> Report["Self-contained HTML report"]
 ```
