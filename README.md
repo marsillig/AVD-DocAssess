@@ -10,7 +10,7 @@ It is designed for consultants and operators who need a structured AVD deploymen
 - IAM role assignments at the selected subscription or resource group scope
 - VNets, subnets, NSGs, route tables, NAT Gateways, VPN Gateways, ExpressRoute circuits, DNS settings, session host NICs, and private endpoints
 - Likely FSLogix/profile storage accounts based on names and tags
-- Log Analytics workspaces, diagnostic settings, and activity log alerts
+- Log Analytics workspaces and diagnostic settings
 - High-level architecture/dependency map, including outbound network components where visible
 - Documentation gaps and collection notes
 

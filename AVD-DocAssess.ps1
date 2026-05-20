@@ -503,12 +503,6 @@ function Get-AvdDocumentationData {
         @(Invoke-ReadOnly -OperationName 'Get-AzOperationalInsightsWorkspace' -Optional -ScriptBlock { Get-AzOperationalInsightsWorkspace -ErrorAction Stop })
     }
 
-    $alerts = if ($ResourceGroupName) {
-        @(Invoke-ReadOnly -OperationName 'Get-AzActivityLogAlert' -Optional -ScriptBlock { Get-AzActivityLogAlert -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
-    } else {
-        @(Invoke-ReadOnly -OperationName 'Get-AzActivityLogAlert' -Optional -ScriptBlock { Get-AzActivityLogAlert -ErrorAction Stop })
-    }
-
     $profileStorageCandidates = @($storageAccounts | Where-Object {
         $_.StorageAccountName -match 'fslogix|profile|avd' -or
         ($_.Tags.Keys -contains 'FSLogixStorageAccount') -or
@@ -539,7 +533,6 @@ function Get-AvdDocumentationData {
         ProfileStorageCandidates = $profileStorageCandidates
         RoleAssignments = $roleAssignments
         LogAnalyticsWorkspaces = $workspacesLa
-        ActivityLogAlerts = $alerts
         Diagnostics = @($hostPoolDiagnostics + $vmDiagnostics)
         GeneratedAt = (Get-Date).ToUniversalTime()
         Warnings = @($script:Warnings)
@@ -827,7 +820,6 @@ function New-HtmlReport {
     $inheritedIamRows = @($Data.RoleAssignments | Where-Object { -not (Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data) } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
     $lawRows = @($Data.LogAnalyticsWorkspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku; RetentionInDays=$_.RetentionInDays; Tags=(New-TagSummary $_.Tags) } })
     $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
-    $alertRows = @($Data.ActivityLogAlerts | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Enabled=$_.Enabled; Scopes=(ConvertTo-FriendlyList @($_.Scopes)); Tags=(New-TagSummary $_.Tags) } })
     $findingRows = New-FindingRows -Data $Data
     $gapRows = New-DocumentationGapRows -Data $Data
     $architectureMap = New-ArchitectureMapHtml -Data $Data
@@ -863,8 +855,7 @@ function New-HtmlReport {
 
     $monitoringHtml = @(
         (New-CollapsibleSectionHtml -Title 'Log Analytics workspaces' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','RetentionInDays','Tags') -Rows $lawRows)),
-        (New-CollapsibleSectionHtml -Title 'Diagnostic settings' -Content (New-TableHtml -Headers @('Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows)),
-        (New-CollapsibleSectionHtml -Title 'Activity log alerts' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Enabled','Scopes','Tags') -Rows $alertRows))
+        (New-CollapsibleSectionHtml -Title 'Diagnostic settings' -Content (New-TableHtml -Headers @('Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows))
     ) -join "`n"
 
     $profileStorageHtml = New-CollapsibleSectionHtml -Title 'Profile storage candidates' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','Kind','PublicNetworkAccess','Tags') -Rows $storageRows -EmptyMessage 'No likely FSLogix/profile storage accounts found by name or tags.')
