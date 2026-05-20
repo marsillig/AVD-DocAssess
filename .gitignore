@@ -2,9 +2,9 @@
 *.html
 !docs/*.html
 !samples/*.sample.html
-AVD-DocAssess-Report.html
-AVD-DocAssess-Report-*.html
-AVD-DocAssess-Report-*.json
+AVD-Blueprint-Report.html
+AVD-Blueprint-Report-*.html
+AVD-Blueprint-Report-*.json
 *.json
 *.log
 *.trace

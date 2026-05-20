@@ -1,6 +1,6 @@
-# AVD-DocAssess
+# AVD-Blueprint
 
-**AVD-DocAssess v0.2.0** is a Cloud Shell–friendly, read-only PowerShell documentation assessor for Azure Virtual Desktop deployments. It inventories the core components of an AVD environment and generates a self-contained HTML documentation report for customer review.
+**AVD-Blueprint v0.2.0** is a Cloud Shell–friendly, read-only PowerShell documentation assessor for Azure Virtual Desktop deployments. It inventories the core components of an AVD environment and generates a self-contained HTML documentation report for customer review.
 
 It is designed for consultants and operators who need a structured AVD deployment document without collecting secrets or making changes to Azure.
 
@@ -16,7 +16,7 @@ It is designed for consultants and operators who need a structured AVD deploymen
 
 ## Security model
 
-AVD-DocAssess is read-only. It does not collect:
+AVD-Blueprint is read-only. It does not collect:
 
 - Passwords
 - Access tokens
@@ -45,17 +45,17 @@ Open [Azure Cloud Shell](https://shell.azure.com) in **PowerShell** mode.
 
 ```powershell
 # Clone the repo
-git clone https://github.com/marsillig/AVD-DocAssess.git
-cd AVD-DocAssess
+git clone https://github.com/marsillig/AVD-Blueprint.git
+cd AVD-Blueprint
 
 # Optional: confirm Azure context
 Get-AzContext
 
 # Run with the existing Cloud Shell Azure context and save a timestamped report to Cloud Drive
-./AVD-DocAssess.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 ```
 
-Download the generated timestamped report, for example `AVD-DocAssess-Report-20260520-143000.html`, from Cloud Shell **Manage files** or from the Cloud Drive file share and open it locally.
+Download the generated timestamped report, for example `AVD-Blueprint-Report-20260520-143000.html`, from Cloud Shell **Manage files** or from the Cloud Drive file share and open it locally.
 
 ## Parameters
 
@@ -66,25 +66,25 @@ Download the generated timestamped report, for example `AVD-DocAssess-Report-202
 | `-ResourceGroupName` | Optional resource group scope. Use subscription scope when network dependencies are in separate resource groups. | `rg-avd-prod` |
 | `-HostPoolName` | Optional host pool scope. Requires `-ResourceGroupName`. | `hp-prod-pooled-01` |
 | `-UseExistingConnection` | Use the current Az context; recommended in Cloud Shell. | switch |
-| `-OutputPath` | HTML report path or directory. A timestamp is automatically appended to the filename. | `~/clouddrive/AVD-DocAssess-Report.html` |
+| `-OutputPath` | HTML report path or directory. A timestamp is automatically appended to the filename. | `~/clouddrive/AVD-Blueprint-Report.html` |
 | `-OpenReport` | Open the generated report locally. Ignored in Cloud Shell. | switch |
 
 ## Examples
 
-`-OutputPath ~/clouddrive/AVD-DocAssess-Report.html` produces a timestamped file such as `AVD-DocAssess-Report-20260520-143000.html`.
+`-OutputPath ~/clouddrive/AVD-Blueprint-Report.html` produces a timestamped file such as `AVD-Blueprint-Report-20260520-143000.html`.
 
 ```powershell
 # Full current subscription, recommended when dependencies span multiple resource groups
-./AVD-DocAssess.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 
 # Specific subscription
-./AVD-DocAssess.ps1 -UseExistingConnection -SubscriptionId "00000000-0000-0000-0000-000000000000" -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -SubscriptionId "00000000-0000-0000-0000-000000000000" -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 
 # Specific AVD resource group
-./AVD-DocAssess.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 
 # Specific host pool
-./AVD-DocAssess.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -HostPoolName "hp-prod-pooled-01" -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -HostPoolName "hp-prod-pooled-01" -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 ```
 
 ## Scope guidance
@@ -105,7 +105,7 @@ If IAM collection fails with an expired token warning, refresh the Cloud Shell c
 
 ```powershell
 Connect-AzAccount
-./AVD-DocAssess.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-Blueprint-Report.html
 ```
 
 If needed:
@@ -122,7 +122,7 @@ The `.gitignore` excludes generated reports, JSON exports, logs, local credentia
 
 ## Relationship to AVD-Assess
 
-AVD-DocAssess complements AVD-Assess. AVD-Assess focuses on health/best-practice scoring. AVD-DocAssess focuses on deployment documentation and inventory.
+AVD-Blueprint complements AVD-Assess. AVD-Assess focuses on health/best-practice scoring. AVD-Blueprint focuses on deployment documentation and inventory.
 
 ## License
 

@@ -1,10 +1,10 @@
-# AVD-DocAssess architecture
+# AVD-Blueprint architecture
 
-AVD-DocAssess is a read-only Azure inventory/documentation generator for Azure Virtual Desktop environments.
+AVD-Blueprint is a read-only Azure inventory/documentation generator for Azure Virtual Desktop environments.
 
 ```mermaid
 flowchart LR
-  Operator["Operator in Azure Cloud Shell"] --> Script["AVD-DocAssess.ps1"]
+  Operator["Operator in Azure Cloud Shell"] --> Script["AVD-Blueprint.ps1"]
   Script --> ARM["Azure Resource Manager read APIs"]
   ARM --> AVD["AVD resources"]
   ARM --> Network["VNets / subnets / NSGs / routes / private endpoints"]

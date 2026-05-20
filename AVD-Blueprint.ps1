@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    AVD-DocAssess - Azure Virtual Desktop deployment documentation assessor.
+    AVD-Blueprint - Azure Virtual Desktop deployment documentation assessor.
 
 .DESCRIPTION
     Runs read-only Azure PowerShell queries against an Azure Virtual Desktop
@@ -31,7 +31,7 @@
     Open the generated HTML report in the default browser. Ignored in Cloud Shell.
 
 .EXAMPLE
-    ./AVD-DocAssess.ps1 -UseExistingConnection -OutputPath ./AVD-DocAssess-Report.html
+    ./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ./AVD-Blueprint-Report.html
 
 .NOTES
     This tool is read-only. It does not collect secrets, keys, tokens, or VM guest
@@ -239,7 +239,7 @@ function Assert-RequiredModules {
     }
 }
 
-function Connect-DocAssessAzure {
+function Connect-BlueprintAzure {
     Assert-RequiredModules
 
     if ($HostPoolName -and -not $ResourceGroupName) {
@@ -1173,7 +1173,7 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 </section>
 
 <footer>
-  AVD-DocAssess v$($script:ToolVersion). Generated read-only from Azure Resource Manager metadata. Do not commit client-generated reports.
+  AVD-Blueprint v$($script:ToolVersion). Generated read-only from Azure Resource Manager metadata. Do not commit client-generated reports.
 </footer>
 </main>
 </div>
@@ -1183,7 +1183,7 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 }
 
 
-function Write-DocAssessBanner {
+function Write-BlueprintBanner {
     $width = 63
     function Format-BannerLine {
         param([string]$Text, [switch]$Center)
@@ -1201,10 +1201,10 @@ function Write-DocAssessBanner {
     $banner = @(
         $border,
         $blank,
-        (Format-BannerLine -Text "AVD-DocAssess  v$($script:ToolVersion)" -Center),
+        (Format-BannerLine -Text "AVD-Blueprint  v$($script:ToolVersion)" -Center),
         (Format-BannerLine -Text 'Azure Virtual Desktop Documentation Assessment'),
         (Format-BannerLine -Text 'https://virtex.cloud'),
-        (Format-BannerLine -Text 'github.com/marsillig/AVD-DocAssess'),
+        (Format-BannerLine -Text 'github.com/marsillig/AVD-Blueprint'),
         $blank,
         $border
     ) -join "`n"
@@ -1214,7 +1214,7 @@ function Write-DocAssessBanner {
 
 function Resolve-ReportPath {
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $defaultFileName = "AVD-DocAssess-Report-$timestamp.html"
+    $defaultFileName = "AVD-Blueprint-Report-$timestamp.html"
 
     if ([string]::IsNullOrWhiteSpace($OutputPath)) {
         return (Join-Path (Get-Location) $defaultFileName)
@@ -1244,8 +1244,8 @@ function Resolve-ReportPath {
 }
 
 function Invoke-Main {
-    Write-DocAssessBanner
-    $context = Connect-DocAssessAzure
+    Write-BlueprintBanner
+    $context = Connect-BlueprintAzure
     $data = Get-AvdDocumentationData -Context $context
     $html = New-HtmlReport -Data $data
     $path = Resolve-ReportPath
