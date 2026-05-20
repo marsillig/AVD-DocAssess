@@ -935,10 +935,9 @@ body {
 a { color:inherit; }
 .container { max-width:1280px; margin:0 auto; padding:32px 24px 52px; }
 header.hero {
-  display:flex;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
   align-items:center;
-  justify-content:center;
-  text-align:center;
   background:#ffffff;
   border:1px solid rgba(221,214,254,.95);
   border-radius:30px;
@@ -949,11 +948,13 @@ header.hero {
   overflow:hidden;
 }
 header.hero::after { display:none; }
-.brand { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
-.brand-name { font-size:64px; font-weight:950; letter-spacing:-.075em; color:var(--purple); line-height:.95; }
+.brand { position:relative; z-index:1; grid-column:1; display:flex; flex-direction:column; align-items:flex-start; gap:10px; text-align:left; }
+.brand-name { font-size:34px; font-weight:950; letter-spacing:-.06em; color:var(--text); line-height:.95; }
 .brand-name .dot { color:var(--cyan); }
-.brand-sub { font-size:17px; color:#3f3f46; letter-spacing:.01em; font-weight:500; }
-.report-mark { display:none; }
+.brand-sub { font-size:15px; color:#64748b; letter-spacing:.01em; font-weight:650; }
+.report-mark { position:relative; z-index:1; grid-column:2; display:flex; justify-content:center; align-items:center; color:var(--purple); }
+.report-mark .big { font-size:64px; font-weight:950; letter-spacing:-.075em; line-height:.95; text-align:center; white-space:nowrap; }
+.report-mark .label { display:none; }
 .meta-bar {
 
   display:grid;
@@ -1083,7 +1084,7 @@ tr:last-child td { border-bottom:0; }
 @media (max-width:1050px) { .lz-layer.top, .lz-layer.bottom, .lz-layer.middle { grid-template-columns:1fr; } .lz-legend { text-align:left; } .lz-titlebar { flex-direction:column; } }
 footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-align:center; }
 footer a { color:var(--purple); font-weight:750; text-decoration:none; }
-@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { padding:34px 24px; } .brand-name { font-size:42px; } .brand-sub { font-size:15px; } section { padding:22px; border-radius:22px; } }
+@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { display:flex; flex-direction:column; align-items:flex-start; padding:34px 24px; } .brand-name { font-size:30px; } .brand-sub { font-size:15px; } .report-mark { width:100%; justify-content:flex-start; } .report-mark .big { font-size:42px; text-align:left; white-space:normal; } section { padding:22px; border-radius:22px; } }
 </style>
 </head>
 <body>
@@ -1092,6 +1093,9 @@ footer a { color:var(--purple); font-weight:750; text-decoration:none; }
     <div class="brand">
       <div class="brand-name">$(ConvertTo-HtmlSafe $reportCustomerName)<span class="dot">.</span></div>
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
+    </div>
+    <div class="report-mark">
+      <div class="big">AVD Blueprint</div>
     </div>
   </header>
   <div class="meta-bar">
