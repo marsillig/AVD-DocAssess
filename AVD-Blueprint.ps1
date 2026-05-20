@@ -914,6 +914,7 @@ function New-HtmlReport {
   --lime:#65a30d;
   --warn:#b45309;
   --danger:#b91c1c;
+  --virtex-purple:#5130a7;
 }
 * { box-sizing:border-box; }
 body {
@@ -943,19 +944,16 @@ header.hero {
 .brand-name .dot { color:var(--lime); }
 .brand-sub { font-size:13px; color:var(--muted); letter-spacing:.02em; }
 .report-mark {
-  min-width:150px;
+  min-width:190px;
   min-height:112px;
-  border-radius:18px;
-  background:linear-gradient(135deg,var(--accent),#0f766e);
-  color:white;
+  color:var(--virtex-purple);
   display:flex;
   flex-direction:column;
   justify-content:center;
-  align-items:center;
-  box-shadow:0 14px 28px rgba(37,99,235,.18);
+  align-items:flex-end;
 }
-.report-mark .big { font-size:38px; font-weight:800; line-height:1; }
-.report-mark .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; opacity:.85; margin-top:8px; }
+.report-mark .big { font-size:32px; font-weight:850; line-height:1; letter-spacing:-.04em; }
+.report-mark .label { display:none; }
 .meta-bar {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -1089,8 +1087,7 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
     </div>
     <div class="report-mark">
-      <div class="big">AVD</div>
-      <div class="label">Documentation</div>
+      <div class="big">AVD Blueprint</div>
     </div>
   </header>
   <div class="meta-bar">
