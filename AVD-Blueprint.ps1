@@ -938,41 +938,59 @@ header.hero {
   display:grid;
   grid-template-columns:1fr auto 1fr;
   align-items:center;
-  gap:28px;
-  background:linear-gradient(135deg,#ffffff 0%,#f8fbff 58%,#eef9ff 100%);
-  border:1px solid rgba(219,232,245,.95);
+  gap:32px;
+  background:#ffffff;
+  border:1px solid rgba(221,214,254,.95);
   border-radius:30px;
-  padding:36px;
+  padding:54px 52px;
   margin-bottom:22px;
-  box-shadow:var(--shadow);
+  box-shadow:0 18px 48px rgba(81,48,167,.08);
   position:relative;
   overflow:hidden;
 }
-header.hero::after {
+header.hero::after { display:none; }
+.brand, .report-mark { position:relative; z-index:1; }
+.brand { grid-column:2; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+.brand-name { font-size:64px; font-weight:950; letter-spacing:-.075em; color:var(--purple); line-height:.95; text-transform:uppercase; }
+.brand-name .dot { display:none; }
+.brand-sub { font-size:17px; color:#3f3f46; letter-spacing:.01em; font-weight:500; }
+.report-mark {
+  grid-column:3;
+  justify-self:end;
+  min-width:245px;
+  color:var(--text);
+  display:grid;
+  grid-template-columns:112px auto;
+  align-items:center;
+  gap:22px;
+}
+.report-ring {
+  width:112px;
+  height:112px;
+  border-radius:50%;
+  background:conic-gradient(var(--cyan) 0 78%, #eee9f6 78% 100%);
+  position:relative;
+}
+.report-ring::before {
   content:'';
   position:absolute;
-  right:-90px;
-  bottom:-140px;
-  width:320px;
-  height:320px;
+  inset:13px;
+  background:#fff;
   border-radius:50%;
-  background:radial-gradient(circle, rgba(22,199,232,.22), transparent 68%);
 }
-.brand, .report-mark { position:relative; z-index:1; }
-.brand { display:flex; flex-direction:column; gap:8px; }
-.brand-name { font-size:38px; font-weight:850; letter-spacing:-.055em; color:var(--text); }
-.brand-name .dot { color:var(--cyan); }
-.brand-sub { font-size:14px; color:var(--muted); letter-spacing:.01em; font-weight:650; }
-.report-mark {
-  min-width:220px;
-  color:var(--purple);
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  grid-column:2;
+.report-ring::after {
+  content:'DOC';
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  color:#f8fafc;
+  font-weight:900;
+  letter-spacing:-.04em;
 }
-.report-mark .big { font-size:34px; font-weight:900; line-height:1; letter-spacing:-.055em; text-align:center; }
-.report-mark .label { display:none; }
+.report-score-label { font-size:12px; letter-spacing:.18em; font-weight:800; color:#3f3f46; text-transform:uppercase; white-space:nowrap; }
+.report-score-value { margin-top:8px; font-size:38px; line-height:1; font-weight:950; color:#050505; letter-spacing:-.06em; }
+.report-score-value span { font-size:18px; color:#64748b; letter-spacing:-.03em; }
 .meta-bar {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -1101,18 +1119,22 @@ tr:last-child td { border-bottom:0; }
 @media (max-width:1050px) { .lz-layer.top, .lz-layer.bottom, .lz-layer.middle { grid-template-columns:1fr; } .lz-legend { text-align:left; } .lz-titlebar { flex-direction:column; } }
 footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-align:center; }
 footer a { color:var(--purple); font-weight:750; text-decoration:none; }
-@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { display:flex; flex-direction:column; align-items:flex-start; padding:26px; } .report-mark { width:100%; min-height:auto; align-items:flex-start; justify-content:flex-start; } .report-mark .big { text-align:left; } .brand-name { font-size:30px; } section { padding:22px; border-radius:22px; } }
+@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { display:flex; flex-direction:column; align-items:center; padding:34px 24px; text-align:center; } .brand-name { font-size:42px; } .brand-sub { font-size:15px; } .report-mark { grid-template-columns:86px auto; min-width:0; width:auto; justify-self:center; } .report-ring { width:86px; height:86px; } .report-score-value { font-size:30px; } section { padding:22px; border-radius:22px; } }
 </style>
 </head>
 <body>
 <div class="container">
   <header class="hero">
     <div class="brand">
-      <div class="brand-name">$(ConvertTo-HtmlSafe $reportCustomerName)<span class="dot">.</span></div>
+      <div class="brand-name">AVD Blueprint</div>
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
     </div>
-    <div class="report-mark">
-      <div class="big">AVD Blueprint</div>
+    <div class="report-mark" aria-label="Documentation report">
+      <div class="report-ring"></div>
+      <div>
+        <div class="report-score-label">Report</div>
+        <div class="report-score-value">DOC<span>/HTML</span></div>
+      </div>
     </div>
   </header>
   <div class="meta-bar">
