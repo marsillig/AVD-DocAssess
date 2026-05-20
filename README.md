@@ -45,6 +45,12 @@ If you prefer an explicit output name:
 # Specific subscription
 ./AVD-Blueprint.ps1 -UseExistingConnection -SubscriptionId "<subscription-id>"
 
+# Multiple subscriptions
+./AVD-Blueprint.ps1 -UseExistingConnection -SubscriptionId "<sub-a>","<sub-b>"
+
+# All visible subscriptions in the tenant
+./AVD-Blueprint.ps1 -UseExistingConnection -AllTenantSubscriptions
+
 # Specific resource group
 ./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod"
 
@@ -57,7 +63,8 @@ If you prefer an explicit output name:
 | Parameter | Description |
 |---|---|
 | `-UseExistingConnection` | Use the current Az PowerShell context. Recommended in Cloud Shell. |
-| `-SubscriptionId` | Optional subscription ID. Defaults to current context. |
+| `-SubscriptionId` | Optional subscription ID or comma-separated list. Defaults to current context. |
+| `-AllTenantSubscriptions` | Scan all enabled subscriptions visible in the current tenant. |
 | `-TenantId` | Optional tenant ID. Defaults to current context. |
 | `-ResourceGroupName` | Optional resource group scope. |
 | `-HostPoolName` | Optional host pool scope. Requires `-ResourceGroupName`. |
@@ -66,7 +73,7 @@ If you prefer an explicit output name:
 
 ## Permissions
 
-Minimum: `Reader` on the subscription or resource group.
+Minimum: `Reader` on each subscription or resource group being scanned.
 
 For complete output, include read access to IAM, monitoring, and any network/storage resource groups used by the AVD environment.
 

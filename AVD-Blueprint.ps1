@@ -9,7 +9,7 @@
     diagnostics, monitoring, and dependency diagrams.
 
 .PARAMETER SubscriptionId
-    Azure subscription ID to document. Falls back to the current Az context.
+    Azure subscription ID(s) to document. Falls back to the current Az context.
 
 .PARAMETER TenantId
     Azure tenant ID to authenticate against. Falls back to the current context.
@@ -23,6 +23,9 @@
 .PARAMETER UseExistingConnection
     Skip Connect-AzAccount and use the current Az PowerShell context. Recommended
     for Azure Cloud Shell.
+
+.PARAMETER AllTenantSubscriptions
+    Scan all enabled subscriptions visible in the current tenant.
 
 .PARAMETER OutputPath
     HTML output path or directory. The generated filename always includes yyyyMMdd-HHmmss.
@@ -41,17 +44,18 @@
 
 [CmdletBinding()]
 param(
-    [string]$SubscriptionId,
+    [string[]]$SubscriptionId,
     [string]$TenantId,
     [string]$ResourceGroupName,
     [string]$HostPoolName,
     [switch]$UseExistingConnection,
+    [switch]$AllTenantSubscriptions,
     [string]$OutputPath,
     [switch]$OpenReport
 )
 
 $ErrorActionPreference = 'Stop'
-$script:ToolVersion = '0.2.0'
+$script:ToolVersion = '0.3.0'
 $script:RequiredModules = @(
     'Az.Accounts',
     'Az.DesktopVirtualization',
@@ -255,12 +259,93 @@ function Connect-BlueprintAzure {
     $context = Get-AzContext
     if (-not $context) { throw 'No Azure context available. Run Connect-AzAccount or use Azure Cloud Shell with -UseExistingConnection.' }
 
-    if ($SubscriptionId) {
-        Set-AzContext -SubscriptionId $SubscriptionId | Out-Null
+    if ($AllTenantSubscriptions -and $SubscriptionId -and $SubscriptionId.Count -gt 0) {
+        throw '-AllTenantSubscriptions cannot be combined with -SubscriptionId.'
+    }
+
+    if ($SubscriptionId -and $SubscriptionId.Count -gt 0) {
+        Set-AzContext -SubscriptionId $SubscriptionId[0] | Out-Null
         $context = Get-AzContext
     }
 
     return $context
+}
+
+function Resolve-TargetSubscriptions {
+    param([object]$Context)
+
+    if ($AllTenantSubscriptions) {
+        return @(Invoke-ReadOnly -OperationName 'Get-AzSubscription' -ScriptBlock {
+            Get-AzSubscription -TenantId $Context.Tenant.Id -ErrorAction Stop | Where-Object { $_.State -eq 'Enabled' }
+        })
+    }
+
+    if ($SubscriptionId -and $SubscriptionId.Count -gt 0) {
+        $allSubscriptions = @(Invoke-ReadOnly -OperationName 'Get-AzSubscription' -Optional -ScriptBlock { Get-AzSubscription -ErrorAction Stop })
+        return @($SubscriptionId | ForEach-Object {
+            $requested = $_
+            $match = @($allSubscriptions | Where-Object { $_.Id -eq $requested -or $_.Name -eq $requested } | Select-Object -First 1)
+            if ($match) { $match } else { [pscustomobject]@{ Id = $requested; Name = $requested; State = 'Unknown' } }
+        })
+    }
+
+    return @([pscustomobject]@{ Id = $Context.Subscription.Id; Name = $Context.Subscription.Name; State = 'Current' })
+}
+
+function Add-SubscriptionMetadata {
+    param(
+        [AllowNull()][object[]]$Items,
+        [Parameter(Mandatory)][object]$Subscription
+    )
+    foreach ($item in @($Items)) {
+        if ($null -eq $item) { continue }
+        $item | Add-Member -NotePropertyName Subscription -NotePropertyValue $Subscription.Name -Force
+        $item | Add-Member -NotePropertyName SubscriptionId -NotePropertyValue $Subscription.Id -Force
+    }
+    return @($Items)
+}
+
+function Merge-DocumentationData {
+    param([object]$BaseContext, [object[]]$DataSets, [object[]]$Subscriptions)
+
+    $first = @($DataSets | Select-Object -First 1)
+    $subscriptionName = if ($Subscriptions.Count -gt 1) { "Multiple subscriptions ($($Subscriptions.Count))" } else { $BaseContext.Subscription.Name }
+    $subscriptionId = if ($Subscriptions.Count -gt 1) { (@($Subscriptions | ForEach-Object { $_.Id }) -join ', ') } else { $BaseContext.Subscription.Id }
+    $mergedContext = [pscustomobject]@{
+        Subscription = [pscustomobject]@{ Name = $subscriptionName; Id = $subscriptionId }
+        Tenant = $BaseContext.Tenant
+        Account = $BaseContext.Account
+    }
+
+    return [pscustomobject]@{
+        Context = $mergedContext
+        CustomerName = if ($first) { $first.CustomerName } else { Get-CustomerNameFromContext -Context $BaseContext }
+        Scope = if ($Subscriptions.Count -gt 1) { "Multiple subscriptions ($($Subscriptions.Count))" } elseif ($first) { $first.Scope } else { 'Current subscription' }
+        HostPools = @($DataSets | ForEach-Object { $_.HostPools })
+        Workspaces = @($DataSets | ForEach-Object { $_.Workspaces })
+        ApplicationGroups = @($DataSets | ForEach-Object { $_.ApplicationGroups })
+        ScalingPlans = @($DataSets | ForEach-Object { $_.ScalingPlans })
+        SessionHosts = @($DataSets | ForEach-Object { $_.SessionHosts })
+        SessionHostVms = @($DataSets | ForEach-Object { $_.SessionHostVms })
+        NetworkInterfaces = @($DataSets | ForEach-Object { $_.NetworkInterfaces }) | Sort-Object Id -Unique
+        VirtualNetworks = @($DataSets | ForEach-Object { $_.VirtualNetworks })
+        NetworkSecurityGroups = @($DataSets | ForEach-Object { $_.NetworkSecurityGroups })
+        RouteTables = @($DataSets | ForEach-Object { $_.RouteTables })
+        NatGateways = @($DataSets | ForEach-Object { $_.NatGateways })
+        VirtualNetworkGateways = @($DataSets | ForEach-Object { $_.VirtualNetworkGateways })
+        LocalNetworkGateways = @($DataSets | ForEach-Object { $_.LocalNetworkGateways })
+        ExpressRouteCircuits = @($DataSets | ForEach-Object { $_.ExpressRouteCircuits })
+        PrivateDnsZones = @($DataSets | ForEach-Object { $_.PrivateDnsZones })
+        PrivateEndpoints = @($DataSets | ForEach-Object { $_.PrivateEndpoints })
+        StorageAccounts = @($DataSets | ForEach-Object { $_.StorageAccounts })
+        ProfileStorageCandidates = @($DataSets | ForEach-Object { $_.ProfileStorageCandidates })
+        RoleAssignments = @($DataSets | ForEach-Object { $_.RoleAssignments })
+        LogAnalyticsWorkspaces = @($DataSets | ForEach-Object { $_.LogAnalyticsWorkspaces })
+        Diagnostics = @($DataSets | ForEach-Object { $_.Diagnostics })
+        GeneratedAt = (Get-Date).ToUniversalTime()
+        Warnings = @($DataSets | ForEach-Object { $_.Warnings })
+        TargetSubscriptions = @($Subscriptions)
+    }
 }
 
 
@@ -341,19 +426,21 @@ function Get-ResourcesAcrossScope {
 function Get-AvdDocumentationData {
     param([object]$Context)
 
-    Write-Host 'Collecting AVD resources...' -ForegroundColor Cyan
+    Write-Host "Collecting AVD resources in $($Context.Subscription.Name)..." -ForegroundColor Cyan
+    $warningStartIndex = $script:Warnings.Count
+    $currentSubscription = [pscustomobject]@{ Id = $Context.Subscription.Id; Name = $Context.Subscription.Name }
 
     $hostPools = @()
     if ($HostPoolName) {
-        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -ScriptBlock {
+        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -Optional -ScriptBlock {
             Get-AzWvdHostPool -ResourceGroupName $ResourceGroupName -Name $HostPoolName -ErrorAction Stop
         })
     } elseif ($ResourceGroupName) {
-        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -ScriptBlock {
+        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -Optional -ScriptBlock {
             Get-AzWvdHostPool -ResourceGroupName $ResourceGroupName -ErrorAction Stop
         })
     } else {
-        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -ScriptBlock {
+        $hostPools = @(Invoke-ReadOnly -OperationName 'Get-AzWvdHostPool' -Optional -ScriptBlock {
             Get-AzWvdHostPool -ErrorAction Stop
         })
     }
@@ -406,13 +493,22 @@ function Get-AvdDocumentationData {
                 AgentVersion = $sessionHost.AgentVersion
                 UpdateState = $sessionHost.UpdateState
                 VmResource = (ConvertTo-FriendlyScope $sessionHost.ResourceId)
+                Subscription = $currentSubscription.Name
+                SubscriptionId = $currentSubscription.Id
             }) | Out-Null
 
             if (-not [string]::IsNullOrWhiteSpace($sessionHost.ResourceId)) {
                 $vmName = ConvertTo-ShortId $sessionHost.ResourceId
                 $vmRg = Get-RgFromArmId $sessionHost.ResourceId
-                $vm = Invoke-ReadOnly -OperationName "Get-AzVM ($vmName)" -Optional -ScriptBlock {
-                    Get-AzVM -ResourceGroupName $vmRg -Name $vmName -ErrorAction Stop
+                $vm = $null
+                try {
+                    $vm = Get-AzVM -ResourceGroupName $vmRg -Name $vmName -ErrorAction Stop
+                } catch {
+                    if ($_.Exception.Message -match 'ResourceNotFound|was not found|NotFound') {
+                        Add-WarningMessage "Session host backing VM not found in selected subscriptions: $vmName ($vmRg / $($currentSubscription.Name))"
+                    } else {
+                        Add-WarningMessage "Get-AzVM ($vmName) failed: $($_.Exception.Message)"
+                    }
                 }
                 if ($vm) {
                     $sessionHostVms.Add($vm) | Out-Null
@@ -433,7 +529,7 @@ function Get-AvdDocumentationData {
         }
     }
 
-    Write-Host 'Collecting networking, IAM, storage, and monitoring resources...' -ForegroundColor Cyan
+    Write-Host "Collecting networking, IAM, storage, and monitoring resources in $($Context.Subscription.Name)..." -ForegroundColor Cyan
 
     $scope = if ($ResourceGroupName) { "/subscriptions/$($Context.Subscription.Id)/resourceGroups/$ResourceGroupName" } else { "/subscriptions/$($Context.Subscription.Id)" }
 
@@ -509,6 +605,28 @@ function Get-AvdDocumentationData {
         ($_.Tags.Keys -contains 'Purpose' -and $_.Tags['Purpose'] -match 'fslogix|profile|avd')
     })
 
+    Add-SubscriptionMetadata -Items $hostPools -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $workspaces -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $applicationGroups -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $scalingPlans -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $sessionHostVms -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $nics -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $vnets -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $nsgs -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $routeTables -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $natGateways -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $virtualNetworkGateways -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $localNetworkGateways -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $expressRouteCircuits -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $privateDnsZones -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $privateEndpoints -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $storageAccounts -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $profileStorageCandidates -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $roleAssignments -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $workspacesLa -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $hostPoolDiagnostics -Subscription $currentSubscription | Out-Null
+    Add-SubscriptionMetadata -Items $vmDiagnostics -Subscription $currentSubscription | Out-Null
+
     return [pscustomobject]@{
         Context = $Context
         CustomerName = (Get-CustomerNameFromContext -Context $Context)
@@ -535,7 +653,7 @@ function Get-AvdDocumentationData {
         LogAnalyticsWorkspaces = $workspacesLa
         Diagnostics = @($hostPoolDiagnostics + $vmDiagnostics)
         GeneratedAt = (Get-Date).ToUniversalTime()
-        Warnings = @($script:Warnings)
+        Warnings = @($script:Warnings | Select-Object -Skip $warningStartIndex)
     }
 }
 
@@ -809,6 +927,7 @@ function New-HtmlReport {
     $reportTitle = "$(ConvertTo-HtmlSafe $reportCustomerName) - Azure Virtual Desktop Deployment Report"
     $hostPoolRows = @($Data.HostPools | Sort-Object Name | ForEach-Object {
         [pscustomobject]@{
+            Subscription = $_.Subscription
             Name = $_.Name
             ResourceGroup = (Get-RgFromArmId $_.Id)
             Location = $_.Location
@@ -819,28 +938,28 @@ function New-HtmlReport {
             Tags = (New-TagSummary $_.Tags)
         }
     })
-    $workspaceRows = @($Data.Workspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; ApplicationGroups=(ConvertTo-FriendlyList @($_.ApplicationGroupReference)); Tags=(New-TagSummary $_.Tags) } })
-    $appGroupRows = @($Data.ApplicationGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; Type=$_.ApplicationGroupType; HostPool=(ConvertTo-ShortId $_.HostPoolArmPath); Tags=(New-TagSummary $_.Tags) } })
-    $scalingRows = @($Data.ScalingPlans | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; TimeZone=$_.TimeZone; HostPoolCount=@($_.HostPoolReference).Count; Tags=(New-TagSummary $_.Tags) } })
-    $vmRows = @($Data.SessionHostVms | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Size=$_.HardwareProfile.VmSize; Zones=(@($_.Zones) -join ', '); OSDisk=$_.StorageProfile.OsDisk.ManagedDisk.StorageAccountType; Tags=(New-TagSummary $_.Tags) } })
-    $nicRows = @($Data.NetworkInterfaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; PrivateIp=(@($_.IpConfigurations | ForEach-Object { $_.PrivateIpAddress }) -join ', '); Subnet=(@($_.IpConfigurations | ForEach-Object { ConvertTo-ShortId $_.Subnet.Id }) -join ', '); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id); AcceleratedNetworking=$_.EnableAcceleratedNetworking } })
-    $vnetRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; AddressSpace=(@($_.AddressSpace.AddressPrefixes) -join ', '); Subnets=(@($_.Subnets | ForEach-Object { "$($_.Name) [$($_.AddressPrefix)]" }) -join '; '); Tags=(New-TagSummary $_.Tags) } })
-    $nsgRows = @($Data.NetworkSecurityGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RuleCount=@($_.SecurityRules).Count; Tags=(New-TagSummary $_.Tags) } })
-    $routeRows = @($Data.RouteTables | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RouteCount=@($_.Routes).Count; DisableBgpRoutePropagation=$_.DisableBgpRoutePropagation; Tags=(New-TagSummary $_.Tags) } })
-    $natRows = @($Data.NatGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; PublicIpCount=@($_.PublicIpAddresses).Count; PublicIpPrefixCount=@($_.PublicIpPrefixes).Count; IdleTimeoutInMinutes=$_.IdleTimeoutInMinutes; Zones=(@($_.Zones) -join ', '); Tags=(New-TagSummary $_.Tags) } })
-    $subnetOutboundRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { $vnet = $_; @($vnet.Subnets | ForEach-Object { [pscustomobject]@{ VNet=$vnet.Name; Subnet=$_.Name; AddressPrefix=$_.AddressPrefix; NatGateway=(Get-SubnetNatGatewayName $_); RouteTable=(ConvertTo-ShortId $_.RouteTable.Id); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id) } }) })
-    $vnetDnsRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; DnsServers=(@($_.DhcpOptions.DnsServers) -join ', '); UsesAzureProvidedDns=((-not $_.DhcpOptions) -or (-not $_.DhcpOptions.DnsServers) -or @($_.DhcpOptions.DnsServers).Count -eq 0) } })
-    $vngRows = @($Data.VirtualNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayType=$_.GatewayType; VpnType=$_.VpnType; Sku=$_.Sku.Name; EnableBgp=$_.EnableBgp; ActiveActive=$_.ActiveActive; Tags=(New-TagSummary $_.Tags) } })
-    $lngRows = @($Data.LocalNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayIpAddress=$_.GatewayIpAddress; AddressPrefixes=(@($_.LocalNetworkAddressSpace.AddressPrefixes) -join ', '); Tags=(New-TagSummary $_.Tags) } })
-    $erRows = @($Data.ExpressRouteCircuits | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; ServiceProvider=$_.ServiceProviderProperties.ServiceProviderName; PeeringLocation=$_.ServiceProviderProperties.PeeringLocation; BandwidthMbps=$_.ServiceProviderProperties.BandwidthInMbps; Sku=$_.Sku.Tier; Family=$_.Sku.Family; ProvisioningState=$_.ServiceProviderProvisioningState; Tags=(New-TagSummary $_.Tags) } })
-    $privateDnsRows = @($Data.PrivateDnsZones | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; RecordSets=$_.NumberOfRecordSets; Tags=(New-TagSummary $_.Tags) } })
-    $peRows = @($Data.PrivateEndpoints | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Subnet=(ConvertTo-ShortId $_.Subnet.Id); Connections=(@($_.PrivateLinkServiceConnections | ForEach-Object { ConvertTo-ShortId $_.PrivateLinkServiceId }) -join ', '); Tags=(New-TagSummary $_.Tags) } })
-    $storageRows = @($Data.ProfileStorageCandidates | Sort-Object StorageAccountName | ForEach-Object { [pscustomobject]@{ Name=$_.StorageAccountName; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; Kind=$_.Kind; PublicNetworkAccess=$_.PublicNetworkAccess; Tags=(New-TagSummary $_.Tags) } })
-    $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
-    $avdIamRows = @($Data.RoleAssignments | Where-Object { Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
-    $inheritedIamRows = @($Data.RoleAssignments | Where-Object { -not (Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data) } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
-    $lawRows = @($Data.LogAnalyticsWorkspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku; RetentionInDays=$_.RetentionInDays; Tags=(New-TagSummary $_.Tags) } })
-    $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
+    $workspaceRows = @($Data.Workspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; ApplicationGroups=(ConvertTo-FriendlyList @($_.ApplicationGroupReference)); Tags=(New-TagSummary $_.Tags) } })
+    $appGroupRows = @($Data.ApplicationGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; Type=$_.ApplicationGroupType; HostPool=(ConvertTo-ShortId $_.HostPoolArmPath); Tags=(New-TagSummary $_.Tags) } })
+    $scalingRows = @($Data.ScalingPlans | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=(Get-RgFromArmId $_.Id); Location=$_.Location; TimeZone=$_.TimeZone; HostPoolCount=@($_.HostPoolReference).Count; Tags=(New-TagSummary $_.Tags) } })
+    $vmRows = @($Data.SessionHostVms | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Size=$_.HardwareProfile.VmSize; Zones=(@($_.Zones) -join ', '); OSDisk=$_.StorageProfile.OsDisk.ManagedDisk.StorageAccountType; Tags=(New-TagSummary $_.Tags) } })
+    $nicRows = @($Data.NetworkInterfaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; PrivateIp=(@($_.IpConfigurations | ForEach-Object { $_.PrivateIpAddress }) -join ', '); Subnet=(@($_.IpConfigurations | ForEach-Object { ConvertTo-ShortId $_.Subnet.Id }) -join ', '); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id); AcceleratedNetworking=$_.EnableAcceleratedNetworking } })
+    $vnetRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; AddressSpace=(@($_.AddressSpace.AddressPrefixes) -join ', '); Subnets=(@($_.Subnets | ForEach-Object { "$($_.Name) [$($_.AddressPrefix)]" }) -join '; '); Tags=(New-TagSummary $_.Tags) } })
+    $nsgRows = @($Data.NetworkSecurityGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RuleCount=@($_.SecurityRules).Count; Tags=(New-TagSummary $_.Tags) } })
+    $routeRows = @($Data.RouteTables | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RouteCount=@($_.Routes).Count; DisableBgpRoutePropagation=$_.DisableBgpRoutePropagation; Tags=(New-TagSummary $_.Tags) } })
+    $natRows = @($Data.NatGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; PublicIpCount=@($_.PublicIpAddresses).Count; PublicIpPrefixCount=@($_.PublicIpPrefixes).Count; IdleTimeoutInMinutes=$_.IdleTimeoutInMinutes; Zones=(@($_.Zones) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $subnetOutboundRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { $vnet = $_; @($vnet.Subnets | ForEach-Object { [pscustomobject]@{ Subscription=$vnet.Subscription; VNet=$vnet.Name; Subnet=$_.Name; AddressPrefix=$_.AddressPrefix; NatGateway=(Get-SubnetNatGatewayName $_); RouteTable=(ConvertTo-ShortId $_.RouteTable.Id); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id) } }) })
+    $vnetDnsRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; DnsServers=(@($_.DhcpOptions.DnsServers) -join ', '); UsesAzureProvidedDns=((-not $_.DhcpOptions) -or (-not $_.DhcpOptions.DnsServers) -or @($_.DhcpOptions.DnsServers).Count -eq 0) } })
+    $vngRows = @($Data.VirtualNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayType=$_.GatewayType; VpnType=$_.VpnType; Sku=$_.Sku.Name; EnableBgp=$_.EnableBgp; ActiveActive=$_.ActiveActive; Tags=(New-TagSummary $_.Tags) } })
+    $lngRows = @($Data.LocalNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayIpAddress=$_.GatewayIpAddress; AddressPrefixes=(@($_.LocalNetworkAddressSpace.AddressPrefixes) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $erRows = @($Data.ExpressRouteCircuits | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; ServiceProvider=$_.ServiceProviderProperties.ServiceProviderName; PeeringLocation=$_.ServiceProviderProperties.PeeringLocation; BandwidthMbps=$_.ServiceProviderProperties.BandwidthInMbps; Sku=$_.Sku.Tier; Family=$_.Sku.Family; ProvisioningState=$_.ServiceProviderProvisioningState; Tags=(New-TagSummary $_.Tags) } })
+    $privateDnsRows = @($Data.PrivateDnsZones | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; RecordSets=$_.NumberOfRecordSets; Tags=(New-TagSummary $_.Tags) } })
+    $peRows = @($Data.PrivateEndpoints | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Subnet=(ConvertTo-ShortId $_.Subnet.Id); Connections=(@($_.PrivateLinkServiceConnections | ForEach-Object { ConvertTo-ShortId $_.PrivateLinkServiceId }) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $storageRows = @($Data.ProfileStorageCandidates | Sort-Object StorageAccountName | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.StorageAccountName; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; Kind=$_.Kind; PublicNetworkAccess=$_.PublicNetworkAccess; Tags=(New-TagSummary $_.Tags) } })
+    $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
+    $avdIamRows = @($Data.RoleAssignments | Where-Object { Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
+    $inheritedIamRows = @($Data.RoleAssignments | Where-Object { -not (Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data) } | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
+    $lawRows = @($Data.LogAnalyticsWorkspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku; RetentionInDays=$_.RetentionInDays; Tags=(New-TagSummary $_.Tags) } })
+    $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Subscription=$_.Subscription; Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
     $findingRows = New-FindingRows -Data $Data
     $inventoryFindingRows = @($findingRows | Where-Object { $_.Area -in @('Session hosts','Cost management','Governance','Summary') })
     $networkFindingRows = @($findingRows | Where-Object { $_.Area -in @('Connectivity','Private endpoints','Outbound internet','Hybrid connectivity','DNS','Private DNS') })
@@ -854,40 +973,40 @@ function New-HtmlReport {
     $architectureMap = New-ArchitectureMapHtml -Data $Data
 
     $avdInventoryHtml = @(
-        (New-CollapsibleSectionHtml -Title 'Host pools' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','LoadBalancer','StartVmOnConnect','PublicNetworkAccess','Tags') -Rows $hostPoolRows)),
-        (New-CollapsibleSectionHtml -Title 'Workspaces' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','ApplicationGroups','Tags') -Rows $workspaceRows)),
-        (New-CollapsibleSectionHtml -Title 'Application groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','HostPool','Tags') -Rows $appGroupRows)),
-        (New-CollapsibleSectionHtml -Title 'Scaling plans' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','TimeZone','HostPoolCount','Tags') -Rows $scalingRows)),
-        (New-CollapsibleSectionHtml -Title 'Session hosts' -Open -Content (New-TableHtml -Headers @('HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResource') -Rows $Data.SessionHosts)),
-        (New-CollapsibleSectionHtml -Title 'Session host VMs' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Size','Zones','OSDisk','Tags') -Rows $vmRows))
+        (New-CollapsibleSectionHtml -Title 'Host pools' -Open -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Type','LoadBalancer','StartVmOnConnect','PublicNetworkAccess','Tags') -Rows $hostPoolRows)),
+        (New-CollapsibleSectionHtml -Title 'Workspaces' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','ApplicationGroups','Tags') -Rows $workspaceRows)),
+        (New-CollapsibleSectionHtml -Title 'Application groups' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Type','HostPool','Tags') -Rows $appGroupRows)),
+        (New-CollapsibleSectionHtml -Title 'Scaling plans' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','TimeZone','HostPoolCount','Tags') -Rows $scalingRows)),
+        (New-CollapsibleSectionHtml -Title 'Session hosts' -Open -Content (New-TableHtml -Headers @('Subscription','HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResource') -Rows $Data.SessionHosts)),
+        (New-CollapsibleSectionHtml -Title 'Session host VMs' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Size','Zones','OSDisk','Tags') -Rows $vmRows))
     ) -join "`n"
 
     $iamSummaryHtml = @(
-        (New-CollapsibleSectionHtml -Title 'AVD-related assignments' -Open -Content (New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $avdIamRows -EmptyMessage 'No AVD-related role assignments were identified in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'Inherited / broader-scope assignments' -Content (New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $inheritedIamRows -EmptyMessage 'No broader-scope role assignments were collected.'))
+        (New-CollapsibleSectionHtml -Title 'AVD-related assignments' -Open -Content (New-TableHtml -Headers @('Subscription','Principal','PrincipalType','Role','Scope') -Rows $avdIamRows -EmptyMessage 'No AVD-related role assignments were identified in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Inherited / broader-scope assignments' -Content (New-TableHtml -Headers @('Subscription','Principal','PrincipalType','Role','Scope') -Rows $inheritedIamRows -EmptyMessage 'No broader-scope role assignments were collected.'))
     ) -join "`n"
 
     $networkingHtml = @(
-        (New-CollapsibleSectionHtml -Title 'Virtual networks and subnets' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','AddressSpace','Subnets','Tags') -Rows $vnetRows)),
-        (New-CollapsibleSectionHtml -Title 'Session host NICs' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','PrivateIp','Subnet','NSG','AcceleratedNetworking') -Rows $nicRows)),
-        (New-CollapsibleSectionHtml -Title 'Network security groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)),
-        (New-CollapsibleSectionHtml -Title 'Subnet outbound configuration' -Open -Content (New-TableHtml -Headers @('VNet','Subnet','AddressPrefix','NatGateway','RouteTable','NSG') -Rows $subnetOutboundRows)),
-        (New-CollapsibleSectionHtml -Title 'NAT Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','PublicIpCount','PublicIpPrefixCount','IdleTimeoutInMinutes','Zones','Tags') -Rows $natRows -EmptyMessage 'No NAT Gateways were discovered in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'VNet DNS configuration' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','DnsServers','UsesAzureProvidedDns') -Rows $vnetDnsRows)),
-        (New-CollapsibleSectionHtml -Title 'VPN Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','GatewayType','VpnType','Sku','EnableBgp','ActiveActive','Tags') -Rows $vngRows -EmptyMessage 'No VPN Gateways were discovered in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'Local Network Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','GatewayIpAddress','AddressPrefixes','Tags') -Rows $lngRows -EmptyMessage 'No Local Network Gateways were discovered in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'ExpressRoute circuits' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','ServiceProvider','PeeringLocation','BandwidthMbps','Sku','Family','ProvisioningState','Tags') -Rows $erRows -EmptyMessage 'No ExpressRoute circuits were discovered in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'Private DNS zones' -Content (New-TableHtml -Headers @('Name','ResourceGroup','RecordSets','Tags') -Rows $privateDnsRows -EmptyMessage 'No Private DNS zones were discovered in the assessed scope.')),
-        (New-CollapsibleSectionHtml -Title 'Route tables' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)),
-        (New-CollapsibleSectionHtml -Title 'Private endpoints' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows))
+        (New-CollapsibleSectionHtml -Title 'Virtual networks and subnets' -Open -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','AddressSpace','Subnets','Tags') -Rows $vnetRows)),
+        (New-CollapsibleSectionHtml -Title 'Session host NICs' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','PrivateIp','Subnet','NSG','AcceleratedNetworking') -Rows $nicRows)),
+        (New-CollapsibleSectionHtml -Title 'Network security groups' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)),
+        (New-CollapsibleSectionHtml -Title 'Subnet outbound configuration' -Open -Content (New-TableHtml -Headers @('Subscription','VNet','Subnet','AddressPrefix','NatGateway','RouteTable','NSG') -Rows $subnetOutboundRows)),
+        (New-CollapsibleSectionHtml -Title 'NAT Gateways' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Sku','PublicIpCount','PublicIpPrefixCount','IdleTimeoutInMinutes','Zones','Tags') -Rows $natRows -EmptyMessage 'No NAT Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'VNet DNS configuration' -Open -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','DnsServers','UsesAzureProvidedDns') -Rows $vnetDnsRows)),
+        (New-CollapsibleSectionHtml -Title 'VPN Gateways' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','GatewayType','VpnType','Sku','EnableBgp','ActiveActive','Tags') -Rows $vngRows -EmptyMessage 'No VPN Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Local Network Gateways' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','GatewayIpAddress','AddressPrefixes','Tags') -Rows $lngRows -EmptyMessage 'No Local Network Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'ExpressRoute circuits' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','ServiceProvider','PeeringLocation','BandwidthMbps','Sku','Family','ProvisioningState','Tags') -Rows $erRows -EmptyMessage 'No ExpressRoute circuits were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Private DNS zones' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','RecordSets','Tags') -Rows $privateDnsRows -EmptyMessage 'No Private DNS zones were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Route tables' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)),
+        (New-CollapsibleSectionHtml -Title 'Private endpoints' -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows))
     ) -join "`n"
 
     $monitoringHtml = @(
-        (New-CollapsibleSectionHtml -Title 'Log Analytics workspaces' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','RetentionInDays','Tags') -Rows $lawRows)),
-        (New-CollapsibleSectionHtml -Title 'Diagnostic settings' -Content (New-TableHtml -Headers @('Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows))
+        (New-CollapsibleSectionHtml -Title 'Log Analytics workspaces' -Open -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Sku','RetentionInDays','Tags') -Rows $lawRows)),
+        (New-CollapsibleSectionHtml -Title 'Diagnostic settings' -Content (New-TableHtml -Headers @('Subscription','Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows))
     ) -join "`n"
 
-    $profileStorageHtml = New-CollapsibleSectionHtml -Title 'Profile storage candidates' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','Kind','PublicNetworkAccess','Tags') -Rows $storageRows -EmptyMessage 'No likely FSLogix/profile storage accounts found by name or tags.')
+    $profileStorageHtml = New-CollapsibleSectionHtml -Title 'Profile storage candidates' -Open -Content (New-TableHtml -Headers @('Subscription','Name','ResourceGroup','Location','Sku','Kind','PublicNetworkAccess','Tags') -Rows $storageRows -EmptyMessage 'No likely FSLogix/profile storage accounts found by name or tags.')
 
     $generated = $Data.GeneratedAt.ToString('yyyy-MM-dd HH:mm:ss UTC')
 
@@ -1233,7 +1352,18 @@ function Resolve-ReportPath {
 function Invoke-Main {
     Write-BlueprintBanner
     $context = Connect-BlueprintAzure
-    $data = Get-AvdDocumentationData -Context $context
+    $targetSubscriptions = Resolve-TargetSubscriptions -Context $context
+    $dataSets = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($subscription in $targetSubscriptions) {
+        Write-Host "Switching to subscription: $($subscription.Name) [$($subscription.Id)]" -ForegroundColor Cyan
+        Set-AzContext -SubscriptionId $subscription.Id | Out-Null
+        $subContext = Get-AzContext
+        $dataSets.Add((Get-AvdDocumentationData -Context $subContext)) | Out-Null
+    }
+
+    Set-AzContext -SubscriptionId $context.Subscription.Id | Out-Null
+    $data = Merge-DocumentationData -BaseContext $context -DataSets @($dataSets) -Subscriptions @($targetSubscriptions)
     $html = New-HtmlReport -Data $data
     $path = Resolve-ReportPath
     $parent = Split-Path -Parent $path
