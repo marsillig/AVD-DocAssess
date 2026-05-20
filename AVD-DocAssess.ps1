@@ -25,7 +25,7 @@
     for Azure Cloud Shell.
 
 .PARAMETER OutputPath
-    HTML output path. Defaults to AVD-DocAssess-Report-yyyyMMdd-HHmmss.html.
+    HTML output path or directory. The generated filename always includes yyyyMMdd-HHmmss.
 
 .PARAMETER OpenReport
     Open the generated HTML report in the default browser. Ignored in Cloud Shell.
@@ -1190,8 +1190,34 @@ function Write-DocAssessBanner {
 }
 
 function Resolve-ReportPath {
-    if ($OutputPath) { return $OutputPath }
-    return (Join-Path (Get-Location) ("AVD-DocAssess-Report-{0}.html" -f (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $defaultFileName = "AVD-DocAssess-Report-$timestamp.html"
+
+    if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+        return (Join-Path (Get-Location) $defaultFileName)
+    }
+
+    $normalizedOutputPath = $OutputPath.Trim()
+    if ($normalizedOutputPath.EndsWith('/') -or $normalizedOutputPath.EndsWith('\') -or (Test-Path -Path $normalizedOutputPath -PathType Container)) {
+        return (Join-Path $normalizedOutputPath $defaultFileName)
+    }
+
+    $parent = Split-Path -Parent $normalizedOutputPath
+    $leaf = Split-Path -Leaf $normalizedOutputPath
+    $extension = [System.IO.Path]::GetExtension($leaf)
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($leaf)
+
+    if ([string]::IsNullOrWhiteSpace($extension)) {
+        return (Join-Path $normalizedOutputPath $defaultFileName)
+    }
+
+    if ($extension -ne '.html') {
+        $extension = '.html'
+    }
+
+    $timestampedLeaf = "$baseName-$timestamp$extension"
+    if ([string]::IsNullOrWhiteSpace($parent)) { return $timestampedLeaf }
+    return (Join-Path $parent $timestampedLeaf)
 }
 
 function Invoke-Main {

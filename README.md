@@ -51,11 +51,11 @@ cd AVD-DocAssess
 # Optional: confirm Azure context
 Get-AzContext
 
-# Run with the existing Cloud Shell Azure context and save to Cloud Drive
+# Run with the existing Cloud Shell Azure context and save a timestamped report to Cloud Drive
 ./AVD-DocAssess.ps1 -UseExistingConnection -OutputPath ~/clouddrive/AVD-DocAssess-Report.html
 ```
 
-Download `AVD-DocAssess-Report.html` from Cloud Shell **Manage files** or from the Cloud Drive file share and open it locally.
+Download the generated timestamped report, for example `AVD-DocAssess-Report-20260520-143000.html`, from Cloud Shell **Manage files** or from the Cloud Drive file share and open it locally.
 
 ## Parameters
 
@@ -66,10 +66,12 @@ Download `AVD-DocAssess-Report.html` from Cloud Shell **Manage files** or from t
 | `-ResourceGroupName` | Optional resource group scope. Use subscription scope when network dependencies are in separate resource groups. | `rg-avd-prod` |
 | `-HostPoolName` | Optional host pool scope. Requires `-ResourceGroupName`. | `hp-prod-pooled-01` |
 | `-UseExistingConnection` | Use the current Az context; recommended in Cloud Shell. | switch |
-| `-OutputPath` | HTML report path. | `~/clouddrive/AVD-DocAssess-Report.html` |
+| `-OutputPath` | HTML report path or directory. A timestamp is automatically appended to the filename. | `~/clouddrive/AVD-DocAssess-Report.html` |
 | `-OpenReport` | Open the generated report locally. Ignored in Cloud Shell. | switch |
 
 ## Examples
+
+`-OutputPath ~/clouddrive/AVD-DocAssess-Report.html` produces a timestamped file such as `AVD-DocAssess-Report-20260520-143000.html`.
 
 ```powershell
 # Full current subscription, recommended when dependencies span multiple resource groups
