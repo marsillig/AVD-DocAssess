@@ -527,15 +527,16 @@ function New-TagSummary {
 }
 
 
+
 function New-ArchitectureMapHtml {
     param([object]$Data)
 
-    function New-MapItemsHtml {
+    function New-CompactItemsHtml {
         param(
             [object[]]$Items,
             [scriptblock]$Label,
-            [string]$EmptyText = 'None found',
-            [int]$MaxItems = 8
+            [string]$EmptyText = 'None discovered',
+            [int]$MaxItems = 3
         )
         if (-not $Items -or $Items.Count -eq 0) {
             return "<li class='muted'>$(ConvertTo-HtmlSafe $EmptyText)</li>"
@@ -550,55 +551,121 @@ function New-ArchitectureMapHtml {
         return $html.ToString()
     }
 
-    $hostPoolItems = New-MapItemsHtml -Items $Data.HostPools -Label { param($x) "Host pool: $($x.Name)" }
-    $workspaceItems = New-MapItemsHtml -Items $Data.Workspaces -Label { param($x) "Workspace: $($x.Name)" }
-    $appGroupItems = New-MapItemsHtml -Items $Data.ApplicationGroups -Label { param($x) "App group: $($x.Name)" }
-    $vmItems = New-MapItemsHtml -Items $Data.SessionHostVms -Label { param($x) "VM: $($x.Name) ($($x.HardwareProfile.VmSize))" }
-    $nicItems = New-MapItemsHtml -Items $Data.NetworkInterfaces -Label { param($x) "NIC: $($x.Name)" }
-    $vnetItems = New-MapItemsHtml -Items $Data.VirtualNetworks -Label { param($x) "VNet: $($x.Name)" }
-    $peItems = New-MapItemsHtml -Items $Data.PrivateEndpoints -Label { param($x) "Private endpoint: $($x.Name)" } -EmptyText "No private endpoints discovered"
-    $natItems = New-MapItemsHtml -Items $Data.NatGateways -Label { param($x) "NAT Gateway: $($x.Name)" } -EmptyText "No NAT Gateway discovered"
-    $storageItems = New-MapItemsHtml -Items $Data.ProfileStorageCandidates -Label { param($x) "Storage: $($x.StorageAccountName) ($($x.Sku.Name))" }
-    $lawItems = New-MapItemsHtml -Items $Data.LogAnalyticsWorkspaces -Label { param($x) "Workspace: $($x.Name)" }
-    $diagItems = New-MapItemsHtml -Items $Data.Diagnostics -Label { param($x) "Diagnostic: $($x.ResourceName)" }
-    $iamItems = New-MapItemsHtml -Items $Data.RoleAssignments -Label { param($x) "$($x.RoleDefinitionName): $($x.DisplayName)" } -MaxItems 10
+    function New-ChipHtml {
+        param([string]$Text, [string]$Kind = 'info')
+        return "<span class='lz-chip $Kind'>$(ConvertTo-HtmlSafe $Text)</span>"
+    }
+
+    $avdRelatedAssignments = @($Data.RoleAssignments | Where-Object { Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data })
+    $inheritedAssignments = @($Data.RoleAssignments | Where-Object { -not (Test-IsAvdRelatedRoleAssignment -RoleAssignment $_ -Data $Data) })
+    $unavailableHosts = @($Data.SessionHosts | Where-Object { $_.Status -and $_.Status -ne 'Available' })
+    $sessionHostSubnetIds = Get-SessionHostSubnetIds -Data $Data
+    $subnetsWithNat = 0
+    foreach ($subnetId in $sessionHostSubnetIds) {
+        $subnet = @($Data.VirtualNetworks | ForEach-Object { $_.Subnets } | Where-Object { $_.Id -eq $subnetId } | Select-Object -First 1)
+        if ($subnet -and $subnet.NatGateway -and $subnet.NatGateway.Id) { $subnetsWithNat++ }
+    }
+
+    $identityChips = @(
+        New-ChipHtml -Text "$($Data.RoleAssignments.Count) IAM assignments" -Kind 'info'
+        New-ChipHtml -Text "$($avdRelatedAssignments.Count) AVD-related" -Kind 'good'
+        New-ChipHtml -Text "$($inheritedAssignments.Count) inherited/broader" -Kind 'neutral'
+    ) -join ''
+
+    $controlPlaneItems = @(
+        New-CompactItemsHtml -Items $Data.Workspaces -Label { param($x) "Workspace: $($x.Name)" }
+        New-CompactItemsHtml -Items $Data.ApplicationGroups -Label { param($x) "App group: $($x.Name)" }
+        New-CompactItemsHtml -Items $Data.HostPools -Label { param($x) "Host pool: $($x.Name)" }
+    ) -join ''
+
+    $monitoringChips = if (@($Data.Diagnostics).Count -gt 0) {
+        New-ChipHtml -Text 'Diagnostics configured' -Kind 'good'
+    } else {
+        New-ChipHtml -Text 'Diagnostics not discovered' -Kind 'warn'
+    }
+    $monitoringItems = @(
+        New-CompactItemsHtml -Items $Data.LogAnalyticsWorkspaces -Label { param($x) "Log Analytics: $($x.Name)" }
+        New-CompactItemsHtml -Items $Data.Diagnostics -Label { param($x) "Diagnostic: $($x.ResourceName)" } -EmptyText 'No diagnostic settings discovered'
+    ) -join ''
+
+    $computeChips = if ($unavailableHosts.Count -gt 0) {
+        New-ChipHtml -Text "$($unavailableHosts.Count) host unavailable" -Kind 'bad'
+    } else {
+        New-ChipHtml -Text 'Hosts available' -Kind 'good'
+    }
+    $computeItems = New-CompactItemsHtml -Items $Data.SessionHostVms -Label { param($x) "VM: $($x.Name) ($($x.HardwareProfile.VmSize))" }
+
+    $networkChips = @(
+        if (@($Data.NatGateways).Count -gt 0 -or $subnetsWithNat -gt 0) { New-ChipHtml -Text 'NAT Gateway present' -Kind 'good' } else { New-ChipHtml -Text 'NAT Gateway missing' -Kind 'warn' }
+        if (@($Data.PrivateEndpoints).Count -gt 0) { New-ChipHtml -Text 'Private endpoint present' -Kind 'good' } else { New-ChipHtml -Text 'Private endpoint missing' -Kind 'warn' }
+        if ($sessionHostSubnetIds.Count -gt 0) { New-ChipHtml -Text "$($sessionHostSubnetIds.Count) session host subnet(s)" -Kind 'info' }
+    ) -join ''
+    $networkItems = @(
+        New-CompactItemsHtml -Items $Data.VirtualNetworks -Label { param($x) "VNet: $($x.Name)" }
+        New-CompactItemsHtml -Items $Data.NatGateways -Label { param($x) "NAT: $($x.Name)" } -EmptyText 'No NAT Gateway discovered'
+    ) -join ''
+
+    $storageChips = if (@($Data.ProfileStorageCandidates).Count -gt 0) {
+        New-ChipHtml -Text "$($Data.ProfileStorageCandidates.Count) profile candidate(s)" -Kind 'info'
+    } else {
+        New-ChipHtml -Text 'Profile storage not identified' -Kind 'warn'
+    }
+    $storageItems = New-CompactItemsHtml -Items $Data.ProfileStorageCandidates -Label { param($x) "Storage: $($x.StorageAccountName) ($($x.Sku.Name))" } -EmptyText 'No profile storage candidate discovered'
 
     return @"
-<div class="arch-map">
-  <div class="arch-row">
-    <div class="arch-card primary">
-      <div class="arch-icon">🖥️</div>
+<div class="lz-map">
+  <div class="lz-titlebar">
+    <div>
+      <div class="lz-eyebrow">Architecture view</div>
+      <div class="lz-title">Azure Virtual Desktop deployment flow</div>
+    </div>
+    <div class="lz-legend">Summary view only — details remain in the sections below</div>
+  </div>
+
+  <div class="lz-layer top">
+    <div class="lz-box identity">
+      <div class="lz-icon">🔐</div>
+      <h3>Identity & IAM</h3>
+      <div class="lz-chips">$identityChips</div>
+    </div>
+    <div class="lz-box control">
+      <div class="lz-icon">🖥️</div>
       <h3>AVD control plane</h3>
-      <ul>$hostPoolItems$appGroupItems$workspaceItems</ul>
+      <ul>$controlPlaneItems</ul>
     </div>
-    <div class="arch-arrow">→</div>
-    <div class="arch-card">
-      <div class="arch-icon">⚙️</div>
-      <h3>Session host compute</h3>
-      <ul>$vmItems</ul>
-    </div>
-    <div class="arch-arrow">→</div>
-    <div class="arch-card">
-      <div class="arch-icon">🌐</div>
-      <h3>Network path</h3>
-      <ul>$vnetItems$nicItems$natItems$peItems</ul>
+    <div class="lz-box monitor">
+      <div class="lz-icon">📊</div>
+      <h3>Monitoring</h3>
+      <div class="lz-chips">$monitoringChips</div>
+      <ul>$monitoringItems</ul>
     </div>
   </div>
-  <div class="arch-row secondary">
-    <div class="arch-card">
-      <div class="arch-icon">💾</div>
+
+  <div class="lz-connector down">↓</div>
+
+  <div class="lz-layer middle">
+    <div class="lz-box compute wide">
+      <div class="lz-icon">⚙️</div>
+      <h3>Session host compute</h3>
+      <div class="lz-chips">$computeChips</div>
+      <ul>$computeItems</ul>
+    </div>
+  </div>
+
+  <div class="lz-connector split">↙ outbound / profiles ↘</div>
+
+  <div class="lz-layer bottom">
+    <div class="lz-box network">
+      <div class="lz-icon">🌐</div>
+      <h3>Network & outbound internet</h3>
+      <div class="lz-chips">$networkChips</div>
+      <ul>$networkItems</ul>
+    </div>
+    <div class="lz-box storage">
+      <div class="lz-icon">💾</div>
       <h3>Profiles / storage</h3>
+      <div class="lz-chips">$storageChips</div>
       <ul>$storageItems</ul>
-    </div>
-    <div class="arch-card">
-      <div class="arch-icon">📊</div>
-      <h3>Monitoring</h3>
-      <ul>$lawItems$diagItems</ul>
-    </div>
-    <div class="arch-card">
-      <div class="arch-icon">🔐</div>
-      <h3>IAM access</h3>
-      <ul>$iamItems</ul>
     </div>
   </div>
 </div>
@@ -841,19 +908,51 @@ tr:last-child td { border-bottom:0; }
 .collapsible .plus::before { content:'+'; display:inline-flex; align-items:center; justify-content:center; width:21px; height:21px; border-radius:999px; color:white; background:var(--accent); font-weight:900; line-height:1; }
 .collapsible[open] .plus::before { content:'−'; background:#475569; }
 .collapsible-body { padding:14px 16px 18px; }
-.arch-map { display:flex; flex-direction:column; gap:18px; }
-.arch-row { display:grid; grid-template-columns:minmax(240px,1fr) 42px minmax(240px,1fr) 42px minmax(240px,1fr); gap:10px; align-items:stretch; }
-.arch-row.secondary { grid-template-columns:repeat(3,minmax(240px,1fr)); }
-.arch-card { border:1px solid var(--line); border-radius:16px; padding:18px; background:linear-gradient(180deg,#ffffff,#f8fafc); box-shadow:0 8px 18px rgba(15,23,42,.05); }
-.arch-card.primary { border-color:#93c5fd; background:linear-gradient(180deg,#eff6ff,#ffffff); }
-.arch-icon { font-size:26px; margin-bottom:6px; }
-.arch-card h3 { margin:0 0 10px; color:var(--text); font-size:17px; }
-.arch-card ul { margin:0; padding-left:18px; line-height:1.6; }
-.arch-card li { margin:3px 0; }
-.arch-arrow { display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:34px; font-weight:900; }
+.lz-map {
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:22px;
+  background:linear-gradient(180deg,#ffffff,#f8fafc);
+  box-shadow:0 10px 26px rgba(15,23,42,.045);
+}
+.lz-titlebar { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
+.lz-eyebrow { font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:.12em; font-weight:800; }
+.lz-title { font-size:20px; font-weight:800; color:var(--text); letter-spacing:-.02em; }
+.lz-legend { color:var(--muted); font-size:13px; text-align:right; max-width:320px; }
+.lz-layer { display:grid; gap:16px; align-items:stretch; }
+.lz-layer.top { grid-template-columns:1fr 1.35fr 1fr; }
+.lz-layer.middle { grid-template-columns:minmax(280px, .72fr); justify-content:center; }
+.lz-layer.bottom { grid-template-columns:1fr 1fr; }
+.lz-box {
+  border:1px solid var(--line-strong);
+  border-radius:16px;
+  padding:16px;
+  background:#fff;
+  min-height:154px;
+  box-shadow:0 8px 18px rgba(15,23,42,.04);
+}
+.lz-box.control { border-color:#93c5fd; background:linear-gradient(180deg,#eff6ff,#ffffff); }
+.lz-box.compute { border-color:#67e8f9; background:linear-gradient(180deg,#ecfeff,#ffffff); }
+.lz-box.network { border-color:#bfdbfe; }
+.lz-box.storage { border-color:#c4b5fd; }
+.lz-box.identity { border-color:#fde68a; }
+.lz-box.monitor { border-color:#bbf7d0; }
+.lz-icon { font-size:24px; margin-bottom:6px; }
+.lz-box h3 { margin:0 0 10px; color:var(--text); font-size:16px; }
+.lz-box ul { margin:10px 0 0; padding-left:18px; line-height:1.48; }
+.lz-box li { margin:4px 0; overflow-wrap:anywhere; }
+.lz-chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px; }
+.lz-chip { display:inline-flex; align-items:center; border-radius:999px; padding:3px 9px; font-size:11px; font-weight:800; border:1px solid var(--line); }
+.lz-chip.good { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+.lz-chip.warn { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+.lz-chip.bad { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+.lz-chip.info { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+.lz-chip.neutral { background:#f1f5f9; color:#475569; border-color:#cbd5e1; }
+.lz-connector { text-align:center; color:var(--accent); font-weight:900; font-size:24px; margin:8px 0; }
+.lz-connector.split { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
 .muted { color:var(--muted); font-style:italic; }
+@media (max-width:1050px) { .lz-layer.top, .lz-layer.bottom, .lz-layer.middle { grid-template-columns:1fr; } .lz-legend { text-align:left; } .lz-titlebar { flex-direction:column; } }
 footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-align:center; }
-@media (max-width:1050px) { .arch-row, .arch-row.secondary { grid-template-columns:1fr; } .arch-arrow { transform:rotate(90deg); min-height:30px; } }
 @media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
 </style>
 </head>
