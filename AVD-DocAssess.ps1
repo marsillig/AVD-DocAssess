@@ -104,6 +104,20 @@ function ConvertTo-FriendlyList {
     return ($items -join ', ')
 }
 
+
+function Get-SessionHostSubnetIds {
+    param([object]$Data)
+    return @($Data.NetworkInterfaces | ForEach-Object {
+        foreach ($ipconfig in @($_.IpConfigurations)) { $ipconfig.Subnet.Id }
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+}
+
+function Get-SubnetNatGatewayName {
+    param([object]$Subnet)
+    if ($Subnet.NatGateway -and $Subnet.NatGateway.Id) { return ConvertTo-ShortId $Subnet.NatGateway.Id }
+    return ''
+}
+
 function Test-IsAvdRelatedRoleAssignment {
     param([object]$RoleAssignment, [object]$Data)
     $scopeText = [string]$RoleAssignment.Scope
@@ -133,6 +147,16 @@ function New-FindingRows {
 
     if (@($Data.PrivateEndpoints).Count -eq 0) {
         $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Private endpoints'; Observation='No private endpoints were discovered in the assessed scope'; Recommendation='If Private Link is part of the target architecture, include the hub/spoke networking resource groups in scope or document why public access is accepted.' }) | Out-Null
+    }
+
+    $sessionHostSubnetIds = Get-SessionHostSubnetIds -Data $Data
+    $sessionHostSubnetsWithoutNat = @()
+    foreach ($subnetId in $sessionHostSubnetIds) {
+        $subnet = @($Data.VirtualNetworks | ForEach-Object { $_.Subnets } | Where-Object { $_.Id -eq $subnetId } | Select-Object -First 1)
+        if (-not $subnet -or -not $subnet.NatGateway -or -not $subnet.NatGateway.Id) { $sessionHostSubnetsWithoutNat += $subnetId }
+    }
+    if ($sessionHostSubnetIds.Count -gt 0 -and $sessionHostSubnetsWithoutNat.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Outbound internet'; Observation="$($sessionHostSubnetsWithoutNat.Count) session host subnet(s) do not show an associated NAT Gateway"; Recommendation='Document the outbound internet path for AVD session hosts. Use NAT Gateway where stable outbound SNAT is required, or document the approved firewall/NVA/proxy egress design.' }) | Out-Null
     }
 
     if (@($Data.ScalingPlans).Count -eq 0) {
@@ -395,6 +419,12 @@ function Get-AvdDocumentationData {
         @(Invoke-ReadOnly -OperationName 'Get-AzRouteTable' -Optional -ScriptBlock { Get-AzRouteTable -ErrorAction Stop })
     }
 
+    $natGateways = if ($ResourceGroupName) {
+        @(Invoke-ReadOnly -OperationName 'Get-AzNatGateway' -Optional -ScriptBlock { Get-AzNatGateway -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
+    } else {
+        @(Invoke-ReadOnly -OperationName 'Get-AzNatGateway' -Optional -ScriptBlock { Get-AzNatGateway -ErrorAction Stop })
+    }
+
     $privateEndpoints = if ($ResourceGroupName) {
         @(Invoke-ReadOnly -OperationName 'Get-AzPrivateEndpoint' -Optional -ScriptBlock { Get-AzPrivateEndpoint -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
     } else {
@@ -439,6 +469,7 @@ function Get-AvdDocumentationData {
         VirtualNetworks = $vnets
         NetworkSecurityGroups = $nsgs
         RouteTables = $routeTables
+        NatGateways = $natGateways
         PrivateEndpoints = $privateEndpoints
         StorageAccounts = $storageAccounts
         ProfileStorageCandidates = $profileStorageCandidates
@@ -526,6 +557,7 @@ function New-ArchitectureMapHtml {
     $nicItems = New-MapItemsHtml -Items $Data.NetworkInterfaces -Label { param($x) "NIC: $($x.Name)" }
     $vnetItems = New-MapItemsHtml -Items $Data.VirtualNetworks -Label { param($x) "VNet: $($x.Name)" }
     $peItems = New-MapItemsHtml -Items $Data.PrivateEndpoints -Label { param($x) "Private endpoint: $($x.Name)" } -EmptyText "No private endpoints discovered"
+    $natItems = New-MapItemsHtml -Items $Data.NatGateways -Label { param($x) "NAT Gateway: $($x.Name)" } -EmptyText "No NAT Gateway discovered"
     $storageItems = New-MapItemsHtml -Items $Data.ProfileStorageCandidates -Label { param($x) "Storage: $($x.StorageAccountName) ($($x.Sku.Name))" }
     $lawItems = New-MapItemsHtml -Items $Data.LogAnalyticsWorkspaces -Label { param($x) "Workspace: $($x.Name)" }
     $diagItems = New-MapItemsHtml -Items $Data.Diagnostics -Label { param($x) "Diagnostic: $($x.ResourceName)" }
@@ -549,7 +581,7 @@ function New-ArchitectureMapHtml {
     <div class="arch-card">
       <div class="arch-icon">🌐</div>
       <h3>Network path</h3>
-      <ul>$vnetItems$nicItems$peItems</ul>
+      <ul>$vnetItems$nicItems$natItems$peItems</ul>
     </div>
   </div>
   <div class="arch-row secondary">
@@ -633,6 +665,8 @@ function New-HtmlReport {
     $vnetRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; AddressSpace=(@($_.AddressSpace.AddressPrefixes) -join ', '); Subnets=(@($_.Subnets | ForEach-Object { "$($_.Name) [$($_.AddressPrefix)]" }) -join '; '); Tags=(New-TagSummary $_.Tags) } })
     $nsgRows = @($Data.NetworkSecurityGroups | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RuleCount=@($_.SecurityRules).Count; Tags=(New-TagSummary $_.Tags) } })
     $routeRows = @($Data.RouteTables | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RouteCount=@($_.Routes).Count; DisableBgpRoutePropagation=$_.DisableBgpRoutePropagation; Tags=(New-TagSummary $_.Tags) } })
+    $natRows = @($Data.NatGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; PublicIpCount=@($_.PublicIpAddresses).Count; PublicIpPrefixCount=@($_.PublicIpPrefixes).Count; IdleTimeoutInMinutes=$_.IdleTimeoutInMinutes; Zones=(@($_.Zones) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $subnetOutboundRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { $vnet = $_; @($vnet.Subnets | ForEach-Object { [pscustomobject]@{ VNet=$vnet.Name; Subnet=$_.Name; AddressPrefix=$_.AddressPrefix; NatGateway=(Get-SubnetNatGatewayName $_); RouteTable=(ConvertTo-ShortId $_.RouteTable.Id); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id) } }) })
     $peRows = @($Data.PrivateEndpoints | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Subnet=(ConvertTo-ShortId $_.Subnet.Id); Connections=(@($_.PrivateLinkServiceConnections | ForEach-Object { ConvertTo-ShortId $_.PrivateLinkServiceId }) -join ', '); Tags=(New-TagSummary $_.Tags) } })
     $storageRows = @($Data.ProfileStorageCandidates | Sort-Object StorageAccountName | ForEach-Object { [pscustomobject]@{ Name=$_.StorageAccountName; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; Kind=$_.Kind; PublicNetworkAccess=$_.PublicNetworkAccess; Tags=(New-TagSummary $_.Tags) } })
     $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
@@ -663,6 +697,8 @@ function New-HtmlReport {
         (New-CollapsibleSectionHtml -Title 'Virtual networks and subnets' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','AddressSpace','Subnets','Tags') -Rows $vnetRows)),
         (New-CollapsibleSectionHtml -Title 'Session host NICs' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','PrivateIp','Subnet','NSG','AcceleratedNetworking') -Rows $nicRows)),
         (New-CollapsibleSectionHtml -Title 'Network security groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)),
+        (New-CollapsibleSectionHtml -Title 'Subnet outbound configuration' -Open -Content (New-TableHtml -Headers @('VNet','Subnet','AddressPrefix','NatGateway','RouteTable','NSG') -Rows $subnetOutboundRows)),
+        (New-CollapsibleSectionHtml -Title 'NAT Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','PublicIpCount','PublicIpPrefixCount','IdleTimeoutInMinutes','Zones','Tags') -Rows $natRows -EmptyMessage 'No NAT Gateways were discovered in the assessed scope.')),
         (New-CollapsibleSectionHtml -Title 'Route tables' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)),
         (New-CollapsibleSectionHtml -Title 'Private endpoints' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows))
     ) -join "`n"
