@@ -478,6 +478,17 @@ function New-TableHtml {
     return $html.ToString()
 }
 
+
+function New-CollapsibleSectionHtml {
+    param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Content,
+        [switch]$Open
+    )
+    $openAttr = if ($Open) { ' open' } else { '' }
+    return "<details class='collapsible'$openAttr><summary><span class='plus'></span>$(ConvertTo-HtmlSafe $Title)</summary><div class='collapsible-body'>$Content</div></details>"
+}
+
 function New-TagSummary {
     param([AllowNull()][hashtable]$Tags)
     if (-not $Tags -or $Tags.Count -eq 0) { return '' }
@@ -634,6 +645,34 @@ function New-HtmlReport {
     $gapRows = New-DocumentationGapRows -Data $Data
     $architectureMap = New-ArchitectureMapHtml -Data $Data
 
+    $avdInventoryHtml = @(
+        (New-CollapsibleSectionHtml -Title 'Host pools' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','LoadBalancer','StartVmOnConnect','PublicNetworkAccess','Tags') -Rows $hostPoolRows)),
+        (New-CollapsibleSectionHtml -Title 'Workspaces' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','ApplicationGroups','Tags') -Rows $workspaceRows)),
+        (New-CollapsibleSectionHtml -Title 'Application groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','HostPool','Tags') -Rows $appGroupRows)),
+        (New-CollapsibleSectionHtml -Title 'Scaling plans' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','TimeZone','HostPoolCount','Tags') -Rows $scalingRows)),
+        (New-CollapsibleSectionHtml -Title 'Session hosts' -Open -Content (New-TableHtml -Headers @('HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResource') -Rows $Data.SessionHosts)),
+        (New-CollapsibleSectionHtml -Title 'Session host VMs' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Size','Zones','OSDisk','Tags') -Rows $vmRows))
+    ) -join "`n"
+
+    $iamSummaryHtml = @(
+        (New-CollapsibleSectionHtml -Title 'AVD-related assignments' -Open -Content (New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $avdIamRows -EmptyMessage 'No AVD-related role assignments were identified in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Inherited / broader-scope assignments' -Content (New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $inheritedIamRows -EmptyMessage 'No broader-scope role assignments were collected.'))
+    ) -join "`n"
+
+    $networkingHtml = @(
+        (New-CollapsibleSectionHtml -Title 'Virtual networks and subnets' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','AddressSpace','Subnets','Tags') -Rows $vnetRows)),
+        (New-CollapsibleSectionHtml -Title 'Session host NICs' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','PrivateIp','Subnet','NSG','AcceleratedNetworking') -Rows $nicRows)),
+        (New-CollapsibleSectionHtml -Title 'Network security groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)),
+        (New-CollapsibleSectionHtml -Title 'Route tables' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)),
+        (New-CollapsibleSectionHtml -Title 'Private endpoints' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows))
+    ) -join "`n"
+
+    $monitoringHtml = @(
+        (New-CollapsibleSectionHtml -Title 'Log Analytics workspaces' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','RetentionInDays','Tags') -Rows $lawRows)),
+        (New-CollapsibleSectionHtml -Title 'Diagnostic settings' -Content (New-TableHtml -Headers @('Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows)),
+        (New-CollapsibleSectionHtml -Title 'Activity log alerts' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Enabled','Scopes','Tags') -Rows $alertRows))
+    ) -join "`n"
+
     $generated = $Data.GeneratedAt.ToString('yyyy-MM-dd HH:mm:ss UTC')
 
     return @"
@@ -672,6 +711,12 @@ th { background:#f1f5f9; color:#334155; font-weight:600; position:sticky; top:0;
 .badge-low { background:#dbeafe; color:#1e40af; }
 .badge-info { background:#dcfce7; color:#166534; }
 .appendix-note { color:#475569; font-size:14px; margin-top:-4px; }
+.collapsible { border:1px solid var(--line); border-radius:12px; margin:12px 0; background:#fff; overflow:hidden; }
+.collapsible summary { cursor:pointer; list-style:none; padding:13px 16px; font-weight:700; color:#1e3a8a; background:#f8fafc; display:flex; align-items:center; gap:10px; }
+.collapsible summary::-webkit-details-marker { display:none; }
+.collapsible .plus::before { content:'+'; display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:999px; color:white; background:#2563eb; font-weight:800; line-height:1; }
+.collapsible[open] .plus::before { content:'−'; background:#475569; }
+.collapsible-body { padding:14px 16px 18px; }
 .arch-map { display:flex; flex-direction:column; gap:18px; }
 .arch-row { display:grid; grid-template-columns:minmax(240px,1fr) 42px minmax(240px,1fr) 42px minmax(240px,1fr); gap:10px; align-items:stretch; }
 .arch-row.secondary { grid-template-columns:repeat(3,minmax(240px,1fr)); }
@@ -720,40 +765,17 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 <section>
   <h2>Technical inventory appendix</h2>
   <p class="appendix-note">The tables below provide the supporting Azure inventory used to build the customer summary and architecture map.</p>
-  <h3>Host pools</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','LoadBalancer','StartVmOnConnect','PublicNetworkAccess','Tags') -Rows $hostPoolRows)
-  <h3>Workspaces</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','ApplicationGroups','Tags') -Rows $workspaceRows)
-  <h3>Application groups</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Type','HostPool','Tags') -Rows $appGroupRows)
-  <h3>Scaling plans</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','TimeZone','HostPoolCount','Tags') -Rows $scalingRows)
-  <h3>Session hosts</h3>
-  $(New-TableHtml -Headers @('HostPool','Name','ResourceGroup','Status','AllowNewSession','Sessions','AgentVersion','UpdateState','VmResource') -Rows $Data.SessionHosts)
-  <h3>Session host VMs</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Size','Zones','OSDisk','Tags') -Rows $vmRows)
+  $avdInventoryHtml
 </section>
 
 <section>
   <h2>IAM access summary</h2>
-  <h3>AVD-related assignments</h3>
-  $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $avdIamRows -EmptyMessage 'No AVD-related role assignments were identified in the assessed scope.')
-  <h3>Inherited / broader-scope assignments</h3>
-  $(New-TableHtml -Headers @('Principal','PrincipalType','Role','Scope') -Rows $inheritedIamRows -EmptyMessage 'No broader-scope role assignments were collected.')
+  $iamSummaryHtml
 </section>
 
 <section>
   <h2>Networking</h2>
-  <h3>Virtual networks and subnets</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','AddressSpace','Subnets','Tags') -Rows $vnetRows)
-  <h3>Session host NICs</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','PrivateIp','Subnet','NSG','AcceleratedNetworking') -Rows $nicRows)
-  <h3>Network security groups</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)
-  <h3>Route tables</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)
-  <h3>Private endpoints</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows)
+  $networkingHtml
 </section>
 
 <section>
@@ -763,12 +785,7 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 
 <section>
   <h2>Monitoring and logging</h2>
-  <h3>Log Analytics workspaces</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','RetentionInDays','Tags') -Rows $lawRows)
-  <h3>Diagnostic settings</h3>
-  $(New-TableHtml -Headers @('Resource','Type','Diagnostic','Workspace','Storage','EventHub') -Rows $diagRows)
-  <h3>Activity log alerts</h3>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Enabled','Scopes','Tags') -Rows $alertRows)
+  $monitoringHtml
 </section>
 
 <footer>
