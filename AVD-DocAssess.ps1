@@ -311,6 +311,33 @@ function Get-DiagnosticSettingsSafe {
 }
 
 
+
+function Get-ResourcesAcrossScope {
+    param(
+        [Parameter(Mandatory)][string]$OperationName,
+        [Parameter(Mandatory)][scriptblock]$ByResourceGroupScript,
+        [scriptblock]$SubscriptionScript
+    )
+
+    if ($ResourceGroupName) {
+        return @(Invoke-ReadOnly -OperationName $OperationName -Optional -ScriptBlock { & $ByResourceGroupScript $ResourceGroupName })
+    }
+
+    if ($SubscriptionScript) {
+        $result = @(Invoke-ReadOnly -OperationName $OperationName -Optional -ScriptBlock $SubscriptionScript)
+        if ($result.Count -gt 0) { return $result }
+    }
+
+    $resourceGroups = @(Invoke-ReadOnly -OperationName 'Get-AzResourceGroup' -Optional -ScriptBlock { Get-AzResourceGroup -ErrorAction Stop })
+    $all = [System.Collections.Generic.List[object]]::new()
+    foreach ($rg in $resourceGroups) {
+        $rgName = $rg.ResourceGroupName
+        $items = @(Invoke-ReadOnly -OperationName "$OperationName ($rgName)" -Optional -ScriptBlock { & $ByResourceGroupScript $rgName })
+        foreach ($item in $items) { $all.Add($item) | Out-Null }
+    }
+    return @($all)
+}
+
 function Get-AvdDocumentationData {
     param([object]$Context)
 
@@ -438,28 +465,24 @@ function Get-AvdDocumentationData {
         @(Invoke-ReadOnly -OperationName 'Get-AzNatGateway' -Optional -ScriptBlock { Get-AzNatGateway -ErrorAction Stop })
     }
 
-    $virtualNetworkGateways = if ($ResourceGroupName) {
-        @(Invoke-ReadOnly -OperationName 'Get-AzVirtualNetworkGateway' -Optional -ScriptBlock { Get-AzVirtualNetworkGateway -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
-    } else {
-        @(Invoke-ReadOnly -OperationName 'Get-AzVirtualNetworkGateway' -Optional -ScriptBlock { Get-AzVirtualNetworkGateway -ErrorAction Stop })
+    $virtualNetworkGateways = Get-ResourcesAcrossScope -OperationName 'Get-AzVirtualNetworkGateway' -ByResourceGroupScript {
+        param($rgName) Get-AzVirtualNetworkGateway -ResourceGroupName $rgName -ErrorAction Stop
     }
 
-    $localNetworkGateways = if ($ResourceGroupName) {
-        @(Invoke-ReadOnly -OperationName 'Get-AzLocalNetworkGateway' -Optional -ScriptBlock { Get-AzLocalNetworkGateway -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
-    } else {
-        @(Invoke-ReadOnly -OperationName 'Get-AzLocalNetworkGateway' -Optional -ScriptBlock { Get-AzLocalNetworkGateway -ErrorAction Stop })
+    $localNetworkGateways = Get-ResourcesAcrossScope -OperationName 'Get-AzLocalNetworkGateway' -ByResourceGroupScript {
+        param($rgName) Get-AzLocalNetworkGateway -ResourceGroupName $rgName -ErrorAction Stop
     }
 
-    $expressRouteCircuits = if ($ResourceGroupName) {
-        @(Invoke-ReadOnly -OperationName 'Get-AzExpressRouteCircuit' -Optional -ScriptBlock { Get-AzExpressRouteCircuit -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
-    } else {
-        @(Invoke-ReadOnly -OperationName 'Get-AzExpressRouteCircuit' -Optional -ScriptBlock { Get-AzExpressRouteCircuit -ErrorAction Stop })
+    $expressRouteCircuits = Get-ResourcesAcrossScope -OperationName 'Get-AzExpressRouteCircuit' -ByResourceGroupScript {
+        param($rgName) Get-AzExpressRouteCircuit -ResourceGroupName $rgName -ErrorAction Stop
+    } -SubscriptionScript {
+        Get-AzExpressRouteCircuit -ErrorAction Stop
     }
 
-    $privateDnsZones = if ($ResourceGroupName) {
-        @(Invoke-ReadOnly -OperationName 'Get-AzPrivateDnsZone' -Optional -ScriptBlock { Get-AzPrivateDnsZone -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
-    } else {
-        @(Invoke-ReadOnly -OperationName 'Get-AzPrivateDnsZone' -Optional -ScriptBlock { Get-AzPrivateDnsZone -ErrorAction Stop })
+    $privateDnsZones = Get-ResourcesAcrossScope -OperationName 'Get-AzPrivateDnsZone' -ByResourceGroupScript {
+        param($rgName) Get-AzPrivateDnsZone -ResourceGroupName $rgName -ErrorAction Stop
+    } -SubscriptionScript {
+        Get-AzPrivateDnsZone -ErrorAction Stop
     }
 
     $privateEndpoints = if ($ResourceGroupName) {
