@@ -780,6 +780,27 @@ function New-FindingCardsHtml {
     return $html.ToString()
 }
 
+function New-SectionFindingsHtml {
+    param([AllowNull()][object[]]$Rows)
+    $safeRows = @($Rows)
+    if ($safeRows.Count -eq 0) { return '' }
+
+    $html = [System.Text.StringBuilder]::new()
+    [void]$html.Append('<div class="section-findings">')
+    foreach ($row in $safeRows) {
+        $priority = if ($row.Priority) { [string]$row.Priority } else { 'Info' }
+        $priorityClass = $priority.ToLowerInvariant()
+        if ($priorityClass -notin @('high','medium','low','info')) { $priorityClass = 'info' }
+        [void]$html.Append("<div class='section-finding section-finding-$priorityClass'>")
+        [void]$html.Append("<div class='section-finding-head'><span class='mini-badge mini-badge-$priorityClass'>$(ConvertTo-HtmlSafe $priority)</span><strong>$(ConvertTo-HtmlSafe $row.Area)</strong></div>")
+        [void]$html.Append("<div class='section-finding-text'><strong>Observation:</strong> $(ConvertTo-HtmlSafe $row.Observation)</div>")
+        [void]$html.Append("<div class='section-finding-text'><strong>Recommended action:</strong> $(ConvertTo-HtmlSafe $row.Recommendation)</div>")
+        [void]$html.Append('</div>')
+    }
+    [void]$html.Append('</div>')
+    return $html.ToString()
+}
+
 function New-HtmlReport {
     param([object]$Data)
 
@@ -821,6 +842,14 @@ function New-HtmlReport {
     $lawRows = @($Data.LogAnalyticsWorkspaces | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku; RetentionInDays=$_.RetentionInDays; Tags=(New-TagSummary $_.Tags) } })
     $diagRows = @($Data.Diagnostics | Sort-Object ResourceType, ResourceName | ForEach-Object { [pscustomobject]@{ Resource=$_.ResourceName; Type=$_.ResourceType; Diagnostic=$_.DiagnosticName; Workspace=(ConvertTo-ShortId $_.WorkspaceId); Storage=(ConvertTo-ShortId $_.StorageAccountId); EventHub=(ConvertTo-ShortId $_.EventHubAuthorizationRuleId) } })
     $findingRows = New-FindingRows -Data $Data
+    $inventoryFindingRows = @($findingRows | Where-Object { $_.Area -in @('Session hosts','Cost management','Governance','Summary') })
+    $networkFindingRows = @($findingRows | Where-Object { $_.Area -in @('Connectivity','Private endpoints','Outbound internet','Hybrid connectivity','DNS','Private DNS') })
+    $storageFindingRows = @($findingRows | Where-Object { $_.Area -in @('FSLogix storage') })
+    $monitoringFindingRows = @($findingRows | Where-Object { $_.Area -in @('Monitoring') })
+    $inventoryFindingsHtml = New-SectionFindingsHtml -Rows $inventoryFindingRows
+    $networkFindingsHtml = New-SectionFindingsHtml -Rows $networkFindingRows
+    $storageFindingsHtml = New-SectionFindingsHtml -Rows $storageFindingRows
+    $monitoringFindingsHtml = New-SectionFindingsHtml -Rows $monitoringFindingRows
     $gapRows = New-DocumentationGapRows -Data $Data
     $architectureMap = New-ArchitectureMapHtml -Data $Data
 
@@ -982,6 +1011,19 @@ tr:last-child td { border-bottom:0; }
 .badge-medium { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
 .badge-low { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
 .badge-info { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.section-findings { display:grid; gap:9px; margin:12px 0 18px; }
+.section-finding { border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:12px; padding:11px 13px; background:#f8fafc; }
+.section-finding-high { border-left-color:#ef4444; background:#fff7f7; }
+.section-finding-medium { border-left-color:#f59e0b; background:#fffbeb; }
+.section-finding-low { border-left-color:#3b82f6; background:#eff6ff; }
+.section-finding-info { border-left-color:#22c55e; background:#f0fdf4; }
+.section-finding-head { display:flex; align-items:center; gap:8px; margin-bottom:5px; color:var(--text); }
+.section-finding-text { color:#334155; font-size:13px; margin:3px 0; }
+.mini-badge { display:inline-block; border-radius:999px; padding:2px 8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.mini-badge-high { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+.mini-badge-medium { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.mini-badge-low { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+.mini-badge-info { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
 .appendix-note { color:#475569; font-size:14px; margin-top:-4px; }
 .collapsible { border:1px solid var(--line); border-radius:14px; margin:12px 0; background:#fff; overflow:hidden; }
 .collapsible summary { cursor:pointer; list-style:none; padding:14px 16px; font-weight:800; color:#1e3a8a; background:#f8fafc; display:flex; align-items:center; gap:10px; }
@@ -1070,8 +1112,6 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
     <div class="card"><div class="num">$($Data.RoleAssignments.Count)</div><div class="label">IAM assignments</div></div>
   </div>
   <p class="report-intro">This report documents the Azure Virtual Desktop deployment discovered in the selected Azure scope. It highlights the main components, visible dependencies, and items that should be validated with the customer before the design is considered fully documented.</p>
-  <h3>Executive findings</h3>
-  $(New-FindingCardsHtml -Rows $findingRows)
   <h3>Documentation gaps / collection notes</h3>
   $(New-TableHtml -Headers @('Area','Gap','Action') -Rows $gapRows -EmptyMessage 'No documentation gaps detected by the current collector.')
 </section>
@@ -1084,6 +1124,7 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 <section>
   <h2>Technical inventory appendix</h2>
   <p class="appendix-note">The tables below provide the supporting Azure inventory used to build the customer summary and architecture map.</p>
+  $inventoryFindingsHtml
   $avdInventoryHtml
 </section>
 
@@ -1094,16 +1135,19 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 
 <section>
   <h2>Networking</h2>
+  $networkFindingsHtml
   $networkingHtml
 </section>
 
 <section>
   <h2>FSLogix / profile storage candidates</h2>
+  $storageFindingsHtml
   $profileStorageHtml
 </section>
 
 <section>
   <h2>Monitoring and logging</h2>
+  $monitoringFindingsHtml
   $monitoringHtml
 </section>
 
