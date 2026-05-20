@@ -18,10 +18,9 @@ Cloud Shell PowerShell tool that documents an Azure Virtual Desktop environment 
 Open Azure Cloud Shell in **PowerShell** mode:
 
 ```powershell
-git clone https://github.com/marsillig/AVD-Blueprint.git
-cd AVD-Blueprint
-New-Item -ItemType Directory -Path ~/avd-blueprint -Force | Out-Null
-./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ~/avd-blueprint/AVD-Blueprint-Report.html
+git clone https://github.com/marsillig/AVD-Blueprint.git ~/avd-blueprint
+cd ~/avd-blueprint
+./AVD-Blueprint.ps1 -UseExistingConnection
 ```
 
 The output filename is timestamped automatically, for example:
@@ -30,22 +29,22 @@ The output filename is timestamped automatically, for example:
 AVD-Blueprint-Report-20260520-143000.html
 ```
 
-Download the HTML report from Cloud Shell and open it locally.
+Download the HTML report from `~/avd-blueprint` and open it locally.
 
 ## Common commands
 
 ```powershell
 # Current subscription
-./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ~/avd-blueprint/AVD-Blueprint-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection
 
 # Specific subscription
-./AVD-Blueprint.ps1 -UseExistingConnection -SubscriptionId "<subscription-id>" -OutputPath ~/avd-blueprint/AVD-Blueprint-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -SubscriptionId "<subscription-id>"
 
 # Specific resource group
-./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -OutputPath ~/avd-blueprint/AVD-Blueprint-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod"
 
 # Specific host pool
-./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -HostPoolName "hp-prod-pooled-01" -OutputPath ~/avd-blueprint/AVD-Blueprint-Report.html
+./AVD-Blueprint.ps1 -UseExistingConnection -ResourceGroupName "rg-avd-prod" -HostPoolName "hp-prod-pooled-01"
 ```
 
 ## Parameters
