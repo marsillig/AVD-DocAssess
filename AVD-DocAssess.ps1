@@ -1112,8 +1112,6 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
     <div class="card"><div class="num">$($Data.RoleAssignments.Count)</div><div class="label">IAM assignments</div></div>
   </div>
   <p class="report-intro">This report documents the Azure Virtual Desktop deployment discovered in the selected Azure scope. It highlights the main components, visible dependencies, and items that should be validated with the customer before the design is considered fully documented.</p>
-  <h3>Documentation gaps / collection notes</h3>
-  $(New-TableHtml -Headers @('Area','Gap','Action') -Rows $gapRows -EmptyMessage 'No documentation gaps detected by the current collector.')
 </section>
 
 <section>
