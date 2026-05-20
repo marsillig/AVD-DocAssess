@@ -956,19 +956,6 @@ header.hero {
 }
 .report-mark .big { font-size:38px; font-weight:800; line-height:1; }
 .report-mark .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; opacity:.85; margin-top:8px; }
-.print-button {
-  border:1px solid var(--line-strong);
-  border-radius:999px;
-  background:rgba(255,255,255,.88);
-  color:#334155;
-  font-size:12px;
-  font-weight:700;
-  padding:7px 11px;
-  cursor:pointer;
-  box-shadow:0 6px 14px rgba(15,23,42,.08);
-}
-.print-button:hover { background:#eff6ff; color:var(--accent); border-color:#bfdbfe; }
-.hero-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
 .meta-bar {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -1091,67 +1078,7 @@ tr:last-child td { border-bottom:0; }
 .muted { color:var(--muted); font-style:italic; }
 @media (max-width:1050px) { .lz-layer.top, .lz-layer.bottom, .lz-layer.middle { grid-template-columns:1fr; } .lz-legend { text-align:left; } .lz-titlebar { flex-direction:column; } }
 footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-align:center; }
-@page { size:A4; margin:12mm; }
-@media print {
-  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  html, body { background:#fff !important; font-size:10.5px; line-height:1.35; }
-  .container { max-width:none; padding:0; margin:0; }
-  .print-button { display:none !important; }
-  header.hero {
-    padding:14px 16px;
-    margin-bottom:8px;
-    border-radius:10px;
-    box-shadow:none;
-    break-inside:avoid;
-  }
-  .brand-name { font-size:22px; }
-  .brand-sub { font-size:10px; }
-  .report-mark { min-width:92px; min-height:58px; border-radius:10px; box-shadow:none; }
-  .report-mark .big { font-size:22px; }
-  .report-mark .label { font-size:8px; margin-top:4px; }
-  .meta-bar { grid-template-columns:repeat(5,1fr); margin-bottom:10px; border-radius:8px; box-shadow:none; break-inside:avoid; }
-  .meta-bar .cell { padding:7px 8px; }
-  .meta-label { font-size:7px; }
-  .meta-value { font-size:9px; }
-  section { padding:12px; margin:0 0 10px; border-radius:10px; box-shadow:none; break-inside:auto; page-break-inside:auto; }
-  section:first-of-type, section:nth-of-type(2) { break-inside:avoid; page-break-inside:avoid; }
-  h2 { font-size:15px; margin:0 0 8px; }
-  h3 { font-size:11px; margin:10px 0 6px; }
-  .cards { grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:8px; }
-  .card { padding:8px; border-radius:8px; }
-  .card .num { font-size:20px; }
-  .card .label { font-size:7px; }
-  .report-intro, .appendix-note { font-size:9.5px; margin:6px 0 8px; }
-  .lz-map { padding:12px; border-radius:10px; box-shadow:none; }
-  .lz-titlebar { margin-bottom:8px; }
-  .lz-title { font-size:14px; }
-  .lz-legend { font-size:8.5px; }
-  .lz-layer.top, .lz-layer.bottom { grid-template-columns:repeat(3,1fr); gap:8px; }
-  .lz-layer.middle { grid-template-columns:minmax(220px,.62fr); gap:8px; }
-  .lz-box { min-height:0; padding:9px; border-radius:10px; box-shadow:none; }
-  .lz-icon { font-size:16px; margin-bottom:2px; }
-  .lz-box h3 { font-size:10.5px; margin-bottom:5px; }
-  .lz-box ul { margin:5px 0 0; padding-left:13px; line-height:1.28; }
-  .lz-box li { margin:2px 0; }
-  .lz-chip { font-size:7.5px; padding:1px 5px; }
-  .lz-connector { font-size:14px; margin:4px 0; }
-  .lz-connector.split { font-size:8px; }
-  .section-findings { gap:5px; margin:6px 0 8px; }
-  .section-finding { padding:7px 8px; border-radius:8px; }
-  .section-finding-text { font-size:8.5px; }
-  .mini-badge { font-size:7px; padding:1px 5px; }
-  .collapsible { margin:7px 0; border-radius:8px; break-inside:auto; }
-  .collapsible summary { padding:8px 10px; font-size:10px; }
-  .collapsible .plus::before { display:none; }
-  .collapsible-body { padding:8px 10px; }
-  .table-wrap { border-radius:8px; overflow:visible; }
-  table { font-size:8px; table-layout:auto; }
-  th, td { padding:4px 5px; word-break:break-word; overflow-wrap:anywhere; }
-  th { font-size:7px; position:static; }
-  tr { break-inside:avoid; page-break-inside:avoid; }
-  footer { margin-top:10px; padding-top:8px; font-size:8px; }
-}
-@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; } .hero-actions { width:100%; align-items:flex-start; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
+@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
 </style>
 </head>
 <body>
@@ -1161,12 +1088,9 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
       <div class="brand-name">$(ConvertTo-HtmlSafe $reportCustomerName)<span class="dot">.</span></div>
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
     </div>
-    <div class="hero-actions">
-      <button class="print-button" type="button" onclick="exportReportPdf()" title="Export or save this report as PDF">Export PDF</button>
-      <div class="report-mark">
-        <div class="big">AVD</div>
-        <div class="label">Documentation</div>
-      </div>
+    <div class="report-mark">
+      <div class="big">AVD</div>
+      <div class="label">Documentation</div>
     </div>
   </header>
   <div class="meta-bar">
@@ -1230,22 +1154,6 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 </footer>
 </main>
 </div>
-
-<script>
-function exportReportPdf() {
-  const details = Array.from(document.querySelectorAll('details'));
-  const previouslyClosed = details.filter((item) => !item.open);
-  previouslyClosed.forEach((item) => { item.open = true; });
-  const restore = () => previouslyClosed.forEach((item) => { item.open = false; });
-  const afterPrint = () => {
-    restore();
-    window.removeEventListener('afterprint', afterPrint);
-  };
-  window.addEventListener('afterprint', afterPrint);
-  setTimeout(() => window.print(), 100);
-  setTimeout(restore, 3000);
-}
-</script>
 </body>
 </html>
 "@
