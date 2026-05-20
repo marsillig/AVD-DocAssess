@@ -14,11 +14,7 @@ It is designed for consultants and operators who need a structured AVD deploymen
 - Customer-friendly architecture/dependency map with compact state badges
 - Section-level documentation findings before the detailed collapsible inventory tables
 
-## Report preview
-
-The image below is a sanitized dry-run viewport capture that shows the report layout without client data.
-
-![AVD-Blueprint sanitized dry-run report viewport](docs/avd-blueprint-dryrun-viewport.svg)
+![AVD-Blueprint report preview](docs/avd-blueprint-dryrun-viewport.svg)
 
 ## Security model
 
