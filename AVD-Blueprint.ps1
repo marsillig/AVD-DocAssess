@@ -927,7 +927,6 @@ body {
 }
 .container { max-width:1280px; margin:0 auto; padding:32px 24px 48px; }
 header.hero {
-  position:relative;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -958,9 +957,6 @@ header.hero {
 .report-mark .big { font-size:38px; font-weight:800; line-height:1; }
 .report-mark .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; opacity:.85; margin-top:8px; }
 .print-button {
-  position:absolute;
-  top:14px;
-  right:14px;
   border:1px solid var(--line-strong);
   border-radius:999px;
   background:rgba(255,255,255,.88);
@@ -972,6 +968,7 @@ header.hero {
   box-shadow:0 6px 14px rgba(15,23,42,.08);
 }
 .print-button:hover { background:#eff6ff; color:var(--accent); border-color:#bfdbfe; }
+.hero-actions { display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
 .meta-bar {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -1154,20 +1151,22 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
   tr { break-inside:avoid; page-break-inside:avoid; }
   footer { margin-top:10px; padding-top:8px; font-size:8px; }
 }
-@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; padding-top:54px; } .print-button { top:12px; left:20px; right:auto; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
+@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; } .hero-actions { width:100%; align-items:flex-start; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
 </style>
 </head>
 <body>
 <div class="container">
   <header class="hero">
-    <button class="print-button" type="button" onclick="exportReportPdf()" title="Export or save this report as PDF">Export PDF</button>
     <div class="brand">
       <div class="brand-name">$(ConvertTo-HtmlSafe $reportCustomerName)<span class="dot">.</span></div>
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
     </div>
-    <div class="report-mark">
-      <div class="big">AVD</div>
-      <div class="label">Documentation</div>
+    <div class="hero-actions">
+      <button class="print-button" type="button" onclick="exportReportPdf()" title="Export or save this report as PDF">Export PDF</button>
+      <div class="report-mark">
+        <div class="big">AVD</div>
+        <div class="label">Documentation</div>
+      </div>
     </div>
   </header>
   <div class="meta-bar">
