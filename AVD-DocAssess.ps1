@@ -927,6 +927,7 @@ body {
 }
 .container { max-width:1280px; margin:0 auto; padding:32px 24px 48px; }
 header.hero {
+  position:relative;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -956,6 +957,21 @@ header.hero {
 }
 .report-mark .big { font-size:38px; font-weight:800; line-height:1; }
 .report-mark .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; opacity:.85; margin-top:8px; }
+.print-button {
+  position:absolute;
+  top:14px;
+  right:14px;
+  border:1px solid var(--line-strong);
+  border-radius:999px;
+  background:rgba(255,255,255,.88);
+  color:#334155;
+  font-size:12px;
+  font-weight:700;
+  padding:7px 11px;
+  cursor:pointer;
+  box-shadow:0 6px 14px rgba(15,23,42,.08);
+}
+.print-button:hover { background:#eff6ff; color:var(--accent); border-color:#bfdbfe; }
 .meta-bar {
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
@@ -1078,12 +1094,19 @@ tr:last-child td { border-bottom:0; }
 .muted { color:var(--muted); font-style:italic; }
 @media (max-width:1050px) { .lz-layer.top, .lz-layer.bottom, .lz-layer.middle { grid-template-columns:1fr; } .lz-legend { text-align:left; } .lz-titlebar { flex-direction:column; } }
 footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; text-align:center; }
-@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
+@media print {
+  body { background:#fff; }
+  .container { max-width:none; padding:0; }
+  .print-button { display:none !important; }
+  section, header.hero, .meta-bar { box-shadow:none; break-inside:avoid; }
+}
+@media (max-width:760px) { .container { padding:20px 14px 36px; } header.hero { flex-direction:column; align-items:flex-start; padding:24px; padding-top:54px; } .print-button { top:12px; left:20px; right:auto; } .report-mark { width:100%; min-height:86px; } section { padding:20px; } }
 </style>
 </head>
 <body>
 <div class="container">
   <header class="hero">
+    <button class="print-button" type="button" onclick="window.print()" title="Export or save this report as PDF">Export PDF</button>
     <div class="brand">
       <div class="brand-name">$(ConvertTo-HtmlSafe $reportCustomerName)<span class="dot">.</span></div>
       <div class="brand-sub">Azure Virtual Desktop Deployment Report</div>
