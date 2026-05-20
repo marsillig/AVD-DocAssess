@@ -1150,7 +1150,9 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 </section>
 
 <footer>
-  AVD-Blueprint v$($script:ToolVersion). Generated read-only from Azure Resource Manager metadata. Do not commit client-generated reports.
+  AVD-Blueprint v$($script:ToolVersion) &middot;
+  <a href="https://virtex.cloud" target="_blank" rel="noopener">https://virtex.cloud</a> &middot;
+  <a href="https://github.com/marsillig/AVD-Blueprint" target="_blank" rel="noopener">github.com/marsillig/AVD-Blueprint</a>
 </footer>
 </main>
 </div>
