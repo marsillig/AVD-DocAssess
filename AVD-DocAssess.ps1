@@ -1159,13 +1159,43 @@ footer { margin-top:30px; padding-top:22px; border-top:1px solid var(--line); co
 "@
 }
 
+
+function Write-DocAssessBanner {
+    $width = 63
+    function Format-BannerLine {
+        param([string]$Text, [switch]$Center)
+        if ($Text.Length -gt $width) { $Text = $Text.Substring(0, $width) }
+        if ($Center) {
+            $left = [math]::Floor(($width - $Text.Length) / 2)
+            $right = $width - $Text.Length - $left
+            return ('|' + (' ' * $left) + $Text + (' ' * $right) + '|')
+        }
+        return ('|      ' + $Text.PadRight($width - 6) + '|')
+    }
+
+    $border = '+' + ('-' * $width) + '+'
+    $blank = '|' + (' ' * $width) + '|'
+    $banner = @(
+        $border,
+        $blank,
+        (Format-BannerLine -Text "AVD-DocAssess  v$($script:ToolVersion)" -Center),
+        (Format-BannerLine -Text 'Azure Virtual Desktop Documentation Assessment'),
+        (Format-BannerLine -Text 'https://virtex.cloud'),
+        (Format-BannerLine -Text 'github.com/marsillig/AVD-DocAssess'),
+        $blank,
+        $border
+    ) -join "`n"
+
+    Write-Host $banner -ForegroundColor Cyan
+}
+
 function Resolve-ReportPath {
     if ($OutputPath) { return $OutputPath }
     return (Join-Path (Get-Location) ("AVD-DocAssess-Report-{0}.html" -f (Get-Date -Format 'yyyyMMdd-HHmmss')))
 }
 
 function Invoke-Main {
-    Write-Host "AVD-DocAssess v$($script:ToolVersion)" -ForegroundColor Cyan
+    Write-DocAssessBanner
     $context = Connect-DocAssessAzure
     $data = Get-AvdDocumentationData -Context $context
     $html = New-HtmlReport -Data $data
