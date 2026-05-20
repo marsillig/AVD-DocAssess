@@ -8,7 +8,7 @@ It is designed for consultants and operators who need a structured AVD deploymen
 
 - Azure Virtual Desktop host pools, workspaces, application groups, session hosts, and scaling plans
 - IAM role assignments at the selected subscription or resource group scope
-- VNets, subnets, NSGs, route tables, NAT Gateways, session host NICs, and private endpoints
+- VNets, subnets, NSGs, route tables, NAT Gateways, VPN Gateways, ExpressRoute circuits, DNS settings, session host NICs, and private endpoints
 - Likely FSLogix/profile storage accounts based on names and tags
 - Log Analytics workspaces, diagnostic settings, and activity log alerts
 - High-level architecture/dependency map, including outbound network components where visible

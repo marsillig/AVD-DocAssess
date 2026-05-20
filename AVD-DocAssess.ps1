@@ -159,6 +159,19 @@ function New-FindingRows {
         $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Outbound internet'; Observation="$($sessionHostSubnetsWithoutNat.Count) session host subnet(s) do not show an associated NAT Gateway"; Recommendation='Document the outbound internet path for AVD session hosts. Use NAT Gateway where stable outbound SNAT is required, or document the approved firewall/NVA/proxy egress design.' }) | Out-Null
     }
 
+    if (@($Data.VirtualNetworkGateways).Count -eq 0 -and @($Data.ExpressRouteCircuits).Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Hybrid connectivity'; Observation='No VPN Gateway or ExpressRoute circuit was discovered in the assessed scope'; Recommendation='Confirm whether AVD session hosts require line-of-sight to on-premises domain controllers, DNS, applications, or file services, and document the approved hybrid connectivity path.' }) | Out-Null
+    }
+
+    $vnetsWithoutCustomDns = @($Data.VirtualNetworks | Where-Object { -not $_.DhcpOptions -or -not $_.DhcpOptions.DnsServers -or @($_.DhcpOptions.DnsServers).Count -eq 0 })
+    if ($Data.VirtualNetworks.Count -gt 0 -and $vnetsWithoutCustomDns.Count -gt 0) {
+        $rows.Add([pscustomobject]@{ Priority='Low'; Area='DNS'; Observation="$($vnetsWithoutCustomDns.Count) VNet(s) use Azure-provided DNS or did not expose custom DNS servers"; Recommendation='Document the DNS resolution model for AVD, including domain controller DNS, private endpoints, and conditional forwarding requirements.' }) | Out-Null
+    }
+
+    if (@($Data.PrivateDnsZones).Count -eq 0) {
+        $rows.Add([pscustomobject]@{ Priority='Low'; Area='Private DNS'; Observation='No Private DNS zones were discovered in the assessed scope'; Recommendation='If Private Link or custom name resolution is used, include the Private DNS zone resource groups in the assessment scope or document the DNS design separately.' }) | Out-Null
+    }
+
     if (@($Data.ScalingPlans).Count -eq 0) {
         $rows.Add([pscustomobject]@{ Priority='Medium'; Area='Cost management'; Observation='No AVD scaling plans were discovered'; Recommendation='Document the operating schedule/capacity approach, or configure AVD autoscale for pooled host pools where appropriate.' }) | Out-Null
     }
@@ -425,6 +438,30 @@ function Get-AvdDocumentationData {
         @(Invoke-ReadOnly -OperationName 'Get-AzNatGateway' -Optional -ScriptBlock { Get-AzNatGateway -ErrorAction Stop })
     }
 
+    $virtualNetworkGateways = if ($ResourceGroupName) {
+        @(Invoke-ReadOnly -OperationName 'Get-AzVirtualNetworkGateway' -Optional -ScriptBlock { Get-AzVirtualNetworkGateway -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
+    } else {
+        @(Invoke-ReadOnly -OperationName 'Get-AzVirtualNetworkGateway' -Optional -ScriptBlock { Get-AzVirtualNetworkGateway -ErrorAction Stop })
+    }
+
+    $localNetworkGateways = if ($ResourceGroupName) {
+        @(Invoke-ReadOnly -OperationName 'Get-AzLocalNetworkGateway' -Optional -ScriptBlock { Get-AzLocalNetworkGateway -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
+    } else {
+        @(Invoke-ReadOnly -OperationName 'Get-AzLocalNetworkGateway' -Optional -ScriptBlock { Get-AzLocalNetworkGateway -ErrorAction Stop })
+    }
+
+    $expressRouteCircuits = if ($ResourceGroupName) {
+        @(Invoke-ReadOnly -OperationName 'Get-AzExpressRouteCircuit' -Optional -ScriptBlock { Get-AzExpressRouteCircuit -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
+    } else {
+        @(Invoke-ReadOnly -OperationName 'Get-AzExpressRouteCircuit' -Optional -ScriptBlock { Get-AzExpressRouteCircuit -ErrorAction Stop })
+    }
+
+    $privateDnsZones = if ($ResourceGroupName) {
+        @(Invoke-ReadOnly -OperationName 'Get-AzPrivateDnsZone' -Optional -ScriptBlock { Get-AzPrivateDnsZone -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
+    } else {
+        @(Invoke-ReadOnly -OperationName 'Get-AzPrivateDnsZone' -Optional -ScriptBlock { Get-AzPrivateDnsZone -ErrorAction Stop })
+    }
+
     $privateEndpoints = if ($ResourceGroupName) {
         @(Invoke-ReadOnly -OperationName 'Get-AzPrivateEndpoint' -Optional -ScriptBlock { Get-AzPrivateEndpoint -ResourceGroupName $ResourceGroupName -ErrorAction Stop })
     } else {
@@ -470,6 +507,10 @@ function Get-AvdDocumentationData {
         NetworkSecurityGroups = $nsgs
         RouteTables = $routeTables
         NatGateways = $natGateways
+        VirtualNetworkGateways = $virtualNetworkGateways
+        LocalNetworkGateways = $localNetworkGateways
+        ExpressRouteCircuits = $expressRouteCircuits
+        PrivateDnsZones = $privateDnsZones
         PrivateEndpoints = $privateEndpoints
         StorageAccounts = $storageAccounts
         ProfileStorageCandidates = $profileStorageCandidates
@@ -605,6 +646,17 @@ function New-ArchitectureMapHtml {
         New-CompactItemsHtml -Items $Data.NatGateways -Label { param($x) "NAT: $($x.Name)" } -EmptyText 'No NAT Gateway discovered'
     ) -join ''
 
+    $hybridChips = @(
+        if (@($Data.VirtualNetworkGateways).Count -gt 0) { New-ChipHtml -Text 'VPN Gateway present' -Kind 'good' } else { New-ChipHtml -Text 'VPN Gateway not discovered' -Kind 'neutral' }
+        if (@($Data.ExpressRouteCircuits).Count -gt 0) { New-ChipHtml -Text 'ExpressRoute present' -Kind 'good' } else { New-ChipHtml -Text 'ExpressRoute not discovered' -Kind 'neutral' }
+        if (@($Data.PrivateDnsZones).Count -gt 0) { New-ChipHtml -Text 'Private DNS present' -Kind 'good' } else { New-ChipHtml -Text 'Private DNS not discovered' -Kind 'warn' }
+    ) -join ''
+    $hybridItems = @(
+        New-CompactItemsHtml -Items $Data.VirtualNetworkGateways -Label { param($x) "VPN Gateway: $($x.Name)" } -EmptyText 'No VPN Gateway discovered'
+        New-CompactItemsHtml -Items $Data.ExpressRouteCircuits -Label { param($x) "ExpressRoute: $($x.Name)" } -EmptyText 'No ExpressRoute circuit discovered'
+        New-CompactItemsHtml -Items $Data.PrivateDnsZones -Label { param($x) "Private DNS: $($x.Name)" } -EmptyText 'No Private DNS zone discovered'
+    ) -join ''
+
     $storageChips = if (@($Data.ProfileStorageCandidates).Count -gt 0) {
         New-ChipHtml -Text "$($Data.ProfileStorageCandidates.Count) profile candidate(s)" -Kind 'info'
     } else {
@@ -660,6 +712,12 @@ function New-ArchitectureMapHtml {
       <h3>Network & outbound internet</h3>
       <div class="lz-chips">$networkChips</div>
       <ul>$networkItems</ul>
+    </div>
+    <div class="lz-box hybrid">
+      <div class="lz-icon">🔗</div>
+      <h3>Hybrid connectivity & DNS</h3>
+      <div class="lz-chips">$hybridChips</div>
+      <ul>$hybridItems</ul>
     </div>
     <div class="lz-box storage">
       <div class="lz-icon">💾</div>
@@ -734,6 +792,11 @@ function New-HtmlReport {
     $routeRows = @($Data.RouteTables | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; RouteCount=@($_.Routes).Count; DisableBgpRoutePropagation=$_.DisableBgpRoutePropagation; Tags=(New-TagSummary $_.Tags) } })
     $natRows = @($Data.NatGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; PublicIpCount=@($_.PublicIpAddresses).Count; PublicIpPrefixCount=@($_.PublicIpPrefixes).Count; IdleTimeoutInMinutes=$_.IdleTimeoutInMinutes; Zones=(@($_.Zones) -join ', '); Tags=(New-TagSummary $_.Tags) } })
     $subnetOutboundRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { $vnet = $_; @($vnet.Subnets | ForEach-Object { [pscustomobject]@{ VNet=$vnet.Name; Subnet=$_.Name; AddressPrefix=$_.AddressPrefix; NatGateway=(Get-SubnetNatGatewayName $_); RouteTable=(ConvertTo-ShortId $_.RouteTable.Id); NSG=(ConvertTo-ShortId $_.NetworkSecurityGroup.Id) } }) })
+    $vnetDnsRows = @($Data.VirtualNetworks | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; DnsServers=(@($_.DhcpOptions.DnsServers) -join ', '); UsesAzureProvidedDns=((-not $_.DhcpOptions) -or (-not $_.DhcpOptions.DnsServers) -or @($_.DhcpOptions.DnsServers).Count -eq 0) } })
+    $vngRows = @($Data.VirtualNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayType=$_.GatewayType; VpnType=$_.VpnType; Sku=$_.Sku.Name; EnableBgp=$_.EnableBgp; ActiveActive=$_.ActiveActive; Tags=(New-TagSummary $_.Tags) } })
+    $lngRows = @($Data.LocalNetworkGateways | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; GatewayIpAddress=$_.GatewayIpAddress; AddressPrefixes=(@($_.LocalNetworkAddressSpace.AddressPrefixes) -join ', '); Tags=(New-TagSummary $_.Tags) } })
+    $erRows = @($Data.ExpressRouteCircuits | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; ServiceProvider=$_.ServiceProviderProperties.ServiceProviderName; PeeringLocation=$_.ServiceProviderProperties.PeeringLocation; BandwidthMbps=$_.ServiceProviderProperties.BandwidthInMbps; Sku=$_.Sku.Tier; Family=$_.Sku.Family; ProvisioningState=$_.ServiceProviderProvisioningState; Tags=(New-TagSummary $_.Tags) } })
+    $privateDnsRows = @($Data.PrivateDnsZones | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; RecordSets=$_.NumberOfRecordSets; Tags=(New-TagSummary $_.Tags) } })
     $peRows = @($Data.PrivateEndpoints | Sort-Object Name | ForEach-Object { [pscustomobject]@{ Name=$_.Name; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Subnet=(ConvertTo-ShortId $_.Subnet.Id); Connections=(@($_.PrivateLinkServiceConnections | ForEach-Object { ConvertTo-ShortId $_.PrivateLinkServiceId }) -join ', '); Tags=(New-TagSummary $_.Tags) } })
     $storageRows = @($Data.ProfileStorageCandidates | Sort-Object StorageAccountName | ForEach-Object { [pscustomobject]@{ Name=$_.StorageAccountName; ResourceGroup=$_.ResourceGroupName; Location=$_.Location; Sku=$_.Sku.Name; Kind=$_.Kind; PublicNetworkAccess=$_.PublicNetworkAccess; Tags=(New-TagSummary $_.Tags) } })
     $iamRows = @($Data.RoleAssignments | Sort-Object Scope, RoleDefinitionName | ForEach-Object { [pscustomobject]@{ Principal=$_.DisplayName; PrincipalType=$_.ObjectType; Role=$_.RoleDefinitionName; Scope=(ConvertTo-FriendlyScope $_.Scope) } })
@@ -766,6 +829,11 @@ function New-HtmlReport {
         (New-CollapsibleSectionHtml -Title 'Network security groups' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RuleCount','Tags') -Rows $nsgRows)),
         (New-CollapsibleSectionHtml -Title 'Subnet outbound configuration' -Open -Content (New-TableHtml -Headers @('VNet','Subnet','AddressPrefix','NatGateway','RouteTable','NSG') -Rows $subnetOutboundRows)),
         (New-CollapsibleSectionHtml -Title 'NAT Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','PublicIpCount','PublicIpPrefixCount','IdleTimeoutInMinutes','Zones','Tags') -Rows $natRows -EmptyMessage 'No NAT Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'VNet DNS configuration' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','DnsServers','UsesAzureProvidedDns') -Rows $vnetDnsRows)),
+        (New-CollapsibleSectionHtml -Title 'VPN Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','GatewayType','VpnType','Sku','EnableBgp','ActiveActive','Tags') -Rows $vngRows -EmptyMessage 'No VPN Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Local Network Gateways' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','GatewayIpAddress','AddressPrefixes','Tags') -Rows $lngRows -EmptyMessage 'No Local Network Gateways were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'ExpressRoute circuits' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','ServiceProvider','PeeringLocation','BandwidthMbps','Sku','Family','ProvisioningState','Tags') -Rows $erRows -EmptyMessage 'No ExpressRoute circuits were discovered in the assessed scope.')),
+        (New-CollapsibleSectionHtml -Title 'Private DNS zones' -Content (New-TableHtml -Headers @('Name','ResourceGroup','RecordSets','Tags') -Rows $privateDnsRows -EmptyMessage 'No Private DNS zones were discovered in the assessed scope.')),
         (New-CollapsibleSectionHtml -Title 'Route tables' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','RouteCount','DisableBgpRoutePropagation','Tags') -Rows $routeRows)),
         (New-CollapsibleSectionHtml -Title 'Private endpoints' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Subnet','Connections','Tags') -Rows $peRows))
     ) -join "`n"
@@ -922,7 +990,7 @@ tr:last-child td { border-bottom:0; }
 .lz-layer { display:grid; gap:16px; align-items:stretch; }
 .lz-layer.top { grid-template-columns:1fr 1.35fr 1fr; }
 .lz-layer.middle { grid-template-columns:minmax(280px, .72fr); justify-content:center; }
-.lz-layer.bottom { grid-template-columns:1fr 1fr; }
+.lz-layer.bottom { grid-template-columns:1fr 1fr 1fr; }
 .lz-box {
   border:1px solid var(--line-strong);
   border-radius:16px;
@@ -935,6 +1003,7 @@ tr:last-child td { border-bottom:0; }
 .lz-box.compute { border-color:#67e8f9; background:linear-gradient(180deg,#ecfeff,#ffffff); }
 .lz-box.network { border-color:#bfdbfe; }
 .lz-box.storage { border-color:#c4b5fd; }
+.lz-box.hybrid { border-color:#99f6e4; }
 .lz-box.identity { border-color:#fde68a; }
 .lz-box.monitor { border-color:#bbf7d0; }
 .lz-icon { font-size:24px; margin-bottom:6px; }
