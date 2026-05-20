@@ -673,6 +673,8 @@ function New-HtmlReport {
         (New-CollapsibleSectionHtml -Title 'Activity log alerts' -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Enabled','Scopes','Tags') -Rows $alertRows))
     ) -join "`n"
 
+    $profileStorageHtml = New-CollapsibleSectionHtml -Title 'Profile storage candidates' -Open -Content (New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','Kind','PublicNetworkAccess','Tags') -Rows $storageRows -EmptyMessage 'No likely FSLogix/profile storage accounts found by name or tags.')
+
     $generated = $Data.GeneratedAt.ToString('yyyy-MM-dd HH:mm:ss UTC')
 
     return @"
@@ -780,7 +782,7 @@ footer { color:var(--muted); font-size:12px; margin-top:28px; }
 
 <section>
   <h2>FSLogix / profile storage candidates</h2>
-  $(New-TableHtml -Headers @('Name','ResourceGroup','Location','Sku','Kind','PublicNetworkAccess','Tags') -Rows $storageRows -EmptyMessage 'No likely FSLogix/profile storage accounts found by name or tags.')
+  $profileStorageHtml
 </section>
 
 <section>
