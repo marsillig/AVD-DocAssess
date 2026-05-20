@@ -1201,6 +1201,9 @@ function Resolve-ReportPath {
     $defaultFileName = "AVD-Blueprint-Report-$timestamp.html"
 
     if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+        if ($env:ACC_CLOUD) {
+            return (Join-Path (Join-Path $HOME 'avd-blueprint') $defaultFileName)
+        }
         return (Join-Path (Get-Location) $defaultFileName)
     }
 
