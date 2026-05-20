@@ -18,8 +18,6 @@ Cloud Shell PowerShell tool that documents an Azure Virtual Desktop environment 
 Open Azure Cloud Shell in **PowerShell** mode:
 
 ```powershell
-mkdir ~/avd-blueprint -Force
-cd ~/avd-blueprint
 curl -o ./AVD-Blueprint.ps1 https://raw.githubusercontent.com/marsillig/AVD-Blueprint/main/AVD-Blueprint.ps1
 ./AVD-Blueprint.ps1 -UseExistingConnection
 ```
@@ -30,7 +28,7 @@ The output filename is timestamped automatically, for example:
 AVD-Blueprint-Report-20260520-143000.html
 ```
 
-Download the HTML report from `~/avd-blueprint` and open it locally.
+Download the generated HTML report and open it locally.
 
 If you prefer an explicit output name:
 
