@@ -51,7 +51,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$script:ToolVersion = '0.1.0'
+$script:ToolVersion = '0.2.0'
 $script:RequiredModules = @(
     'Az.Accounts',
     'Az.DesktopVirtualization',
