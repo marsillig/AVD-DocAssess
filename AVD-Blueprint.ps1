@@ -141,7 +141,7 @@ function New-FindingRows {
 
     $unavailableHosts = @($Data.SessionHosts | Where-Object { $_.Status -and $_.Status -ne 'Available' })
     if ($unavailableHosts.Count -gt 0) {
-        $rows.Add([pscustomobject]@{ Priority='High'; Area='Session hosts'; Observation="$($unavailableHosts.Count) session host(s) are not Available"; Recommendation='Review host health, AVD agent status, domain/Entra join, and FSLogix profile dependencies.' }) | Out-Null
+        $rows.Add([pscustomobject]@{ Priority='High'; Area='Session hosts'; Observation="$($unavailableHosts.Count) session host(s) are not Available. This may be expected when hosts are intentionally stopped by autoscaling."; Recommendation='Confirm autoscale/start-stop policy. If hosts should be online, review host health, AVD agent status, domain/Entra join, and FSLogix profile dependencies.' }) | Out-Null
     }
 
     $publicHostPools = @($Data.HostPools | Where-Object { $_.PublicNetworkAccess -eq 'Enabled' -or [string]::IsNullOrWhiteSpace([string]$_.PublicNetworkAccess) })
