@@ -36,6 +36,14 @@ If you prefer an explicit output name:
 ./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ./AVD-Blueprint-Report.html
 ```
 
+### Try it out (Dry Run)
+
+You can test AVD-Blueprint immediately without an active Azure connection or subscription using the dry-run mode. This generates a high-fidelity simulated report using mock data so you can preview the design:
+
+```powershell
+./AVD-Blueprint.ps1 -DryRun
+```
+
 ## Common commands
 
 ```powershell
@@ -70,6 +78,8 @@ If you prefer an explicit output name:
 | `-HostPoolName` | Optional host pool scope. Requires `-ResourceGroupName`. |
 | `-OutputPath` | Output file or directory. Timestamp is added automatically. |
 | `-OpenReport` | Open the report locally after generation. |
+| `-DryRun` | Bypass Azure connection and generate report using simulated mock data. |
+| `-CustomerName` | Optional custom customer name or branding header to override default domain extraction. |
 
 ## Permissions
 

@@ -33,6 +33,12 @@
 .PARAMETER OpenReport
     Open the generated HTML report in the default browser. Ignored in Cloud Shell.
 
+.PARAMETER DryRun
+    Bypass Azure connection and generate report using simulated mock data. Perfect for local demonstrations or dry runs.
+
+.PARAMETER CustomerName
+    Optional custom customer name or branding header to override default domain extraction.
+
 .EXAMPLE
     ./AVD-Blueprint.ps1 -UseExistingConnection -OutputPath ./AVD-Blueprint-Report.html
 
@@ -51,7 +57,9 @@ param(
     [switch]$UseExistingConnection,
     [switch]$AllTenantSubscriptions,
     [string]$OutputPath,
-    [switch]$OpenReport
+    [switch]$OpenReport,
+    [switch]$DryRun,
+    [string]$CustomerName
 )
 
 $ErrorActionPreference = 'Stop'
@@ -317,9 +325,17 @@ function Merge-DocumentationData {
         Account = $BaseContext.Account
     }
 
+    $finalCustomerName = if (-not [string]::IsNullOrWhiteSpace($CustomerName)) {
+        $CustomerName
+    } elseif ($first) {
+        $first.CustomerName
+    } else {
+        Get-CustomerNameFromContext -Context $BaseContext
+    }
+
     return [pscustomobject]@{
         Context = $mergedContext
-        CustomerName = if ($first) { $first.CustomerName } else { Get-CustomerNameFromContext -Context $BaseContext }
+        CustomerName = $finalCustomerName
         Scope = if ($Subscriptions.Count -gt 1) { "Multiple subscriptions ($($Subscriptions.Count))" } elseif ($first) { $first.Scope } else { 'Current subscription' }
         HostPools = @($DataSets | ForEach-Object { $_.HostPools })
         Workspaces = @($DataSets | ForEach-Object { $_.Workspaces })
@@ -469,6 +485,32 @@ function Get-AvdDocumentationData {
     $hostPoolDiagnostics = [System.Collections.Generic.List[object]]::new()
     $vmDiagnostics = [System.Collections.Generic.List[object]]::new()
 
+    # Bulk pre-fetch VMs and NICs in the selected scope to optimize performance and prevent sequential N+1 query loop throttles
+    $vmsInScope = @{}
+    $nicsInScope = @{}
+    
+    if ($ResourceGroupName) {
+        Write-Host "Pre-fetching backing VMs and NICs in Resource Group: $ResourceGroupName..." -ForegroundColor Cyan
+        $fetchedVms = Invoke-ReadOnly -OperationName "Get-AzVM (Bulk RG)" -Optional -ScriptBlock { Get-AzVM -ResourceGroupName $ResourceGroupName -ErrorAction Stop }
+        foreach ($vmItem in @($fetchedVms)) {
+            if ($vmItem -and $vmItem.Id) { $vmsInScope[$vmItem.Id.ToLower()] = $vmItem }
+        }
+        $fetchedNics = Invoke-ReadOnly -OperationName "Get-AzNetworkInterface (Bulk RG)" -Optional -ScriptBlock { Get-AzNetworkInterface -ResourceGroupName $ResourceGroupName -ErrorAction Stop }
+        foreach ($nicItem in @($fetchedNics)) {
+            if ($nicItem -and $nicItem.Id) { $nicsInScope[$nicItem.Id.ToLower()] = $nicItem }
+        }
+    } else {
+        Write-Host "Pre-fetching backing VMs and NICs in current subscription..." -ForegroundColor Cyan
+        $fetchedVms = Invoke-ReadOnly -OperationName "Get-AzVM (Bulk Sub)" -Optional -ScriptBlock { Get-AzVM -ErrorAction Stop }
+        foreach ($vmItem in @($fetchedVms)) {
+            if ($vmItem -and $vmItem.Id) { $vmsInScope[$vmItem.Id.ToLower()] = $vmItem }
+        }
+        $fetchedNics = Invoke-ReadOnly -OperationName "Get-AzNetworkInterface (Bulk Sub)" -Optional -ScriptBlock { Get-AzNetworkInterface -ErrorAction Stop }
+        foreach ($nicItem in @($fetchedNics)) {
+            if ($nicItem -and $nicItem.Id) { $nicsInScope[$nicItem.Id.ToLower()] = $nicItem }
+        }
+    }
+
     foreach ($hp in $hostPools) {
         $hpRg = Get-RgFromArmId $hp.Id
         $hpName = $hp.Name
@@ -501,15 +543,23 @@ function Get-AvdDocumentationData {
                 $vmName = ConvertTo-ShortId $sessionHost.ResourceId
                 $vmRg = Get-RgFromArmId $sessionHost.ResourceId
                 $vm = $null
-                try {
-                    $vm = Get-AzVM -ResourceGroupName $vmRg -Name $vmName -ErrorAction Stop
-                } catch {
-                    if ($_.Exception.Message -match 'ResourceNotFound|was not found|NotFound') {
-                        Add-WarningMessage "Session host backing VM not found in selected subscriptions: $vmName ($vmRg / $($currentSubscription.Name))"
-                    } else {
-                        Add-WarningMessage "Get-AzVM ($vmName) failed: $($_.Exception.Message)"
+                $vmIdKey = $sessionHost.ResourceId.ToLower()
+
+                if ($vmsInScope.ContainsKey($vmIdKey)) {
+                    $vm = $vmsInScope[$vmIdKey]
+                } else {
+                    # Fallback to direct query if VM wasn't pre-fetched (e.g. cross-RG topology)
+                    try {
+                        $vm = Get-AzVM -ResourceGroupName $vmRg -Name $vmName -ErrorAction Stop
+                    } catch {
+                        if ($_.Exception.Message -match 'ResourceNotFound|was not found|NotFound') {
+                            Add-WarningMessage "Session host backing VM not found in selected subscriptions: $vmName ($vmRg / $($currentSubscription.Name))"
+                        } else {
+                            Add-WarningMessage "Get-AzVM ($vmName) failed: $($_.Exception.Message)"
+                        }
                     }
                 }
+
                 if ($vm) {
                     $sessionHostVms.Add($vm) | Out-Null
                     $diag = Get-DiagnosticSettingsSafe -ResourceId $vm.Id
@@ -518,10 +568,16 @@ function Get-AvdDocumentationData {
                     }
                     foreach ($nicRef in @($vm.NetworkProfile.NetworkInterfaces)) {
                         if ($nicRef.Id) {
-                            $nic = Invoke-ReadOnly -OperationName "Get-AzNetworkInterface ($($vm.Name))" -Optional -ScriptBlock {
-                                Get-AzNetworkInterface -ResourceId $nicRef.Id -ErrorAction Stop
+                            $nicIdKey = $nicRef.Id.ToLower()
+                            if ($nicsInScope.ContainsKey($nicIdKey)) {
+                                $nics.Add($nicsInScope[$nicIdKey]) | Out-Null
+                            } else {
+                                # Fallback to direct query
+                                $nic = Invoke-ReadOnly -OperationName "Get-AzNetworkInterface ($($vm.Name))" -Optional -ScriptBlock {
+                                    Get-AzNetworkInterface -ResourceId $nicRef.Id -ErrorAction Stop
+                                }
+                                if ($nic) { $nics.Add($nic) | Out-Null }
                             }
-                            if ($nic) { $nics.Add($nic) | Out-Null }
                         }
                     }
                 }
@@ -654,6 +710,227 @@ function Get-AvdDocumentationData {
         Diagnostics = @($hostPoolDiagnostics + $vmDiagnostics)
         GeneratedAt = (Get-Date).ToUniversalTime()
         Warnings = @($script:Warnings | Select-Object -Skip $warningStartIndex)
+    }
+}
+
+function Get-MockDocumentationData {
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'
+    $mockSubName = 'Dry Run Subscription'
+    $mockSubId = '00000000-0000-0000-0000-000000000000'
+    $mockTenantId = 'dryrun.example'
+    $mockCustomerName = if (-not [string]::IsNullOrWhiteSpace($CustomerName)) { $CustomerName } else { 'dryrun.example' }
+    
+    $mergedContext = [pscustomobject]@{
+        Subscription = [pscustomobject]@{ Name = $mockSubName; Id = $mockSubId }
+        Tenant = [pscustomobject]@{ Id = $mockTenantId }
+        Account = [pscustomobject]@{ Id = "admin@$mockTenantId" }
+    }
+
+    $hostPools = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'hp-avd-demo'
+            Id = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.DesktopVirtualization/hostPools/hp-avd-demo"
+            Location = 'eastus'
+            HostPoolType = 'Pooled'
+            LoadBalancerType = 'BreadthFirst'
+            StartVMOnConnect = $true
+            PublicNetworkAccess = 'Enabled'
+            Tags = @{ 'Environment' = 'Demo' }
+        }
+    )
+
+    $workspaces = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'ws-avd-demo'
+            Id = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.DesktopVirtualization/workspaces/ws-avd-demo"
+            Location = 'eastus'
+            ApplicationGroupReference = @("/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.DesktopVirtualization/applicationGroups/dag-avd-demo")
+            Tags = @{}
+        }
+    )
+
+    $applicationGroups = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'dag-avd-demo'
+            Id = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.DesktopVirtualization/applicationGroups/dag-avd-demo"
+            Location = 'eastus'
+            ApplicationGroupType = 'Desktop'
+            HostPoolArmPath = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.DesktopVirtualization/hostPools/hp-avd-demo"
+            Tags = @{}
+        }
+    )
+
+    $scalingPlans = @()
+
+    $sessionHosts = @(
+        [pscustomobject]@{
+            HostPool = 'hp-avd-demo'
+            Name = 'avd-sh-001'
+            ResourceGroup = 'rg-avd-demo'
+            Status = 'Available'
+            AllowNewSession = $true
+            Session = 0
+            AgentVersion = '1.0'
+            UpdateState = 'Succeeded'
+            VmResource = 'avd-sh-001'
+            Subscription = $mockSubName
+            SubscriptionId = $mockSubId
+        }
+    )
+
+    $sessionHostVms = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'avd-sh-001'
+            ResourceGroupName = 'rg-avd-demo'
+            Location = 'eastus'
+            HardwareProfile = [pscustomobject]@{ VmSize = 'Standard_D2s_v5' }
+            Zones = @()
+            StorageProfile = [pscustomobject]@{ OsDisk = [pscustomobject]@{ ManagedDisk = [pscustomobject]@{ StorageAccountType = 'Premium_LRS' } } }
+            Tags = @{}
+        }
+    )
+
+    $nics = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'avd-sh-001-nic'
+            ResourceGroupName = 'rg-avd-demo'
+            Location = 'eastus'
+            IpConfigurations = @(
+                [pscustomobject]@{
+                    PrivateIpAddress = '10.10.1.4'
+                    Subnet = [pscustomobject]@{ Id = "/subscriptions/$mockSubId/resourceGroups/rg-net/providers/Microsoft.Network/virtualNetworks/vnet-avd/subnets/snet-hosts" }
+                }
+            )
+            NetworkSecurityGroup = [pscustomobject]@{ Id = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo/providers/Microsoft.Network/networkSecurityGroups/nsg-avd" }
+            EnableAcceleratedNetworking = $true
+        }
+    )
+
+    $vnets = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'vnet-avd'
+            ResourceGroupName = 'rg-net'
+            Location = 'eastus'
+            AddressSpace = [pscustomobject]@{ AddressPrefixes = @('10.10.0.0/16') }
+            Subnets = @(
+                [pscustomobject]@{
+                    Name = 'snet-hosts'
+                    AddressPrefix = '10.10.1.0/24'
+                    NatGateway = [pscustomobject]@{ Id = "/subscriptions/$mockSubId/resourceGroups/rg-net/providers/Microsoft.Network/natGateways/nat-avd" }
+                    RouteTable = $null
+                    NetworkSecurityGroup = $null
+                }
+            )
+            DhcpOptions = [pscustomobject]@{ DnsServers = @('10.10.0.4') }
+            Tags = @{}
+        }
+    )
+
+    $nsgs = @()
+    $routeTables = @()
+
+    $natGateways = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'nat-avd'
+            ResourceGroupName = 'rg-net'
+            Location = 'eastus'
+            Sku = [pscustomobject]@{ Name = 'Standard' }
+            PublicIpAddresses = @()
+            PublicIpPrefixes = @()
+            IdleTimeoutInMinutes = 4
+            Zones = @()
+            Tags = @{}
+        }
+    )
+
+    $vngs = @()
+    $lngs = @()
+    $ers = @()
+    $privateDnsZones = @()
+    $privateEndpoints = @()
+
+    $profileStorageCandidates = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            StorageAccountName = 'stavdprofiles'
+            ResourceGroupName = 'rg-storage'
+            Location = 'eastus'
+            Sku = [pscustomobject]@{ Name = 'Standard_ZRS' }
+            Kind = 'StorageV2'
+            PublicNetworkAccess = 'Disabled'
+            Tags = @{}
+        }
+    )
+
+    $roleAssignments = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            DisplayName = 'AVD Operators'
+            ObjectType = 'Group'
+            RoleDefinitionName = 'Desktop Virtualization Reader'
+            Scope = "/subscriptions/$mockSubId/resourceGroups/rg-avd-demo"
+        }
+    )
+
+    $workspacesLa = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            Name = 'law-avd'
+            ResourceGroupName = 'rg-monitor'
+            Location = 'eastus'
+            Sku = 'PerGB2018'
+            RetentionInDays = 30
+            Tags = @{}
+        }
+    )
+
+    $diagnostics = @(
+        [pscustomobject]@{
+            Subscription = $mockSubName
+            ResourceName = 'hp-avd-demo'
+            ResourceType = 'HostPool'
+            DiagnosticName = 'diag-avd'
+            WorkspaceId = "/subscriptions/$mockSubId/resourceGroups/rg-monitor/providers/Microsoft.OperationalInsights/workspaces/law-avd"
+            StorageAccountId = $null
+            EventHubAuthorizationRuleId = $null
+        }
+    )
+
+    return [pscustomobject]@{
+        Context = $mergedContext
+        CustomerName = $mockCustomerName
+        Scope = 'Dry run / mocked data'
+        HostPools = $hostPools
+        Workspaces = $workspaces
+        ApplicationGroups = $applicationGroups
+        ScalingPlans = $scalingPlans
+        SessionHosts = $sessionHosts
+        SessionHostVms = $sessionHostVms
+        NetworkInterfaces = $nics
+        VirtualNetworks = $vnets
+        NetworkSecurityGroups = $nsgs
+        RouteTables = $routeTables
+        NatGateways = $natGateways
+        VirtualNetworkGateways = $vngs
+        LocalNetworkGateways = $lngs
+        ExpressRouteCircuits = $ers
+        PrivateDnsZones = $privateDnsZones
+        PrivateEndpoints = $privateEndpoints
+        StorageAccounts = $profileStorageCandidates
+        ProfileStorageCandidates = $profileStorageCandidates
+        RoleAssignments = $roleAssignments
+        LogAnalyticsWorkspaces = $workspacesLa
+        Diagnostics = $diagnostics
+        GeneratedAt = (Get-Date).ToUniversalTime()
+        Warnings = @()
+        TargetSubscriptions = @()
     }
 }
 
@@ -1086,11 +1363,13 @@ header.hero::after { display:none; }
   margin-bottom:26px;
   box-shadow:var(--shadow-soft);
 }
-.meta-bar .cell { background:rgba(255,255,255,.92); padding:15px 18px; }
+.meta-bar .cell { background:rgba(255,255,255,.82); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); padding:15px 18px; }
 .meta-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; margin-bottom:5px; font-weight:850; }
 .meta-value { font-size:14px; color:var(--text); font-weight:700; word-break:break-word; }
 section {
-  background:rgba(255,255,255,.92);
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
   border:1px solid rgba(219,232,245,.95);
   border-radius:26px;
   padding:30px;
@@ -1351,19 +1630,27 @@ function Resolve-ReportPath {
 
 function Invoke-Main {
     Write-BlueprintBanner
-    $context = Connect-BlueprintAzure
-    $targetSubscriptions = Resolve-TargetSubscriptions -Context $context
-    $dataSets = [System.Collections.Generic.List[object]]::new()
+    
+    $data = $null
+    if ($DryRun) {
+        Write-Host "Running in DRY-RUN mode. Using simulated mock data..." -ForegroundColor Yellow
+        $data = Get-MockDocumentationData
+    } else {
+        $context = Connect-BlueprintAzure
+        $targetSubscriptions = Resolve-TargetSubscriptions -Context $context
+        $dataSets = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($subscription in $targetSubscriptions) {
-        Write-Host "Switching to subscription: $($subscription.Name) [$($subscription.Id)]" -ForegroundColor Cyan
-        Set-AzContext -SubscriptionId $subscription.Id | Out-Null
-        $subContext = Get-AzContext
-        $dataSets.Add((Get-AvdDocumentationData -Context $subContext)) | Out-Null
+        foreach ($subscription in $targetSubscriptions) {
+            Write-Host "Switching to subscription: $($subscription.Name) [$($subscription.Id)]" -ForegroundColor Cyan
+            Set-AzContext -SubscriptionId $subscription.Id | Out-Null
+            $subContext = Get-AzContext
+            $dataSets.Add((Get-AvdDocumentationData -Context $subContext)) | Out-Null
+        }
+
+        Set-AzContext -SubscriptionId $context.Subscription.Id | Out-Null
+        $data = Merge-DocumentationData -BaseContext $context -DataSets @($dataSets) -Subscriptions @($targetSubscriptions)
     }
 
-    Set-AzContext -SubscriptionId $context.Subscription.Id | Out-Null
-    $data = Merge-DocumentationData -BaseContext $context -DataSets @($dataSets) -Subscriptions @($targetSubscriptions)
     $html = New-HtmlReport -Data $data
     $path = Resolve-ReportPath
     $parent = Split-Path -Parent $path
