@@ -1,106 +1,194 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
-  <title id="title">AVD-Blueprint sanitized dry-run report viewport</title>
-  <desc id="desc">Sanitized preview of the AVD-Blueprint HTML report showing the hero banner, summary cards, architecture map, and collapsible inventory sections.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1150" viewBox="0 0 1440 1150" role="img" aria-labelledby="title desc">
+  <title id="title">AVD-Blueprint dryrun report viewport - bottom sections</title>
+  <desc id="desc">Visual preview of the AVD-Blueprint report showing the middle/bottom of the dependency map, findings card, and detailed collapsible tables.</desc>
   <defs>
-    <linearGradient id="hero" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="map-bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#f7fbff"/>
     </linearGradient>
-    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2563eb"/>
-      <stop offset="1" stop-color="#0f766e"/>
-    </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#0f172a" flood-opacity="0.10"/>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.06"/>
+    </filter>
+    <filter id="shadow-sm" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.04"/>
     </filter>
   </defs>
-  <rect width="1440" height="900" fill="#f8fafc"/>
-  <rect x="44" y="34" width="1352" height="148" rx="18" fill="url(#hero)" stroke="#dbe5ef" filter="url(#shadow)"/>
-  <text x="78" y="88" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="36" font-weight="800" fill="#0f172a">dryrun.example</text>
-  <circle cx="340" cy="84" r="5" fill="#65a30d"/>
-  <text x="78" y="122" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="15" fill="#64748b">Azure Virtual Desktop Deployment Report</text>
-  <rect x="1194" y="52" width="92" height="30" rx="15" fill="#ffffff" stroke="#cbd5e1"/>
-  <text x="1214" y="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12" font-weight="700" fill="#334155">Export PDF</text>
-  <rect x="1240" y="82" width="120" height="78" rx="16" fill="url(#mark)"/>
-  <text x="1272" y="124" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="800" fill="#ffffff">AVD</text>
-  <text x="1260" y="145" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="10" font-weight="700" fill="#e0f2fe" letter-spacing="1.8">DOCUMENT</text>
+  
+  <!-- Outer canvas background -->
+  <rect width="1440" height="1150" fill="#f8fafc"/>
 
-  <g transform="translate(44,202)">
-    <rect width="1352" height="70" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-    <g font-family="Inter, Segoe UI, Arial, sans-serif">
-      <text x="24" y="24" font-size="10" font-weight="800" fill="#64748b">GENERATED</text>
-      <text x="24" y="48" font-size="14" font-weight="700" fill="#0f172a">2026-05-24 23:49 UTC</text>
-      <text x="292" y="24" font-size="10" font-weight="800" fill="#64748b">SUBSCRIPTION</text>
-      <text x="292" y="48" font-size="14" font-weight="700" fill="#0f172a">Dry Run Subscription</text>
-      <text x="560" y="24" font-size="10" font-weight="800" fill="#64748b">SUBSCRIPTION ID</text>
-      <text x="560" y="48" font-size="14" font-weight="700" fill="#0f172a">00000000-0000-0000-0000-000000000000</text>
-      <text x="880" y="24" font-size="10" font-weight="800" fill="#64748b">TENANT</text>
-      <text x="880" y="48" font-size="14" font-weight="700" fill="#0f172a">dryrun.example</text>
-      <text x="1110" y="24" font-size="10" font-weight="800" fill="#64748b">SCOPE</text>
-      <text x="1110" y="48" font-size="14" font-weight="700" fill="#0f172a">Dry run / mocked data</text>
+  <!-- ==================== TOP SECTION: MAP CONTAINER ==================== -->
+  <rect x="44" y="30" width="1352" height="480" rx="24" fill="url(#map-bg)" stroke="#e2e8f0" stroke-width="1" filter="url(#shadow)"/>
+  
+  <!-- Session host compute box -->
+  <g transform="translate(254, 56)">
+    <rect width="932" height="90" rx="20" fill="#ffffff" stroke="#8beaff" stroke-width="1.5" filter="url(#shadow-sm)"/>
+    <text x="24" y="34" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="900" fill="#0f172a">⚙️ Session host compute</text>
+    <!-- Hosts available chip -->
+    <rect x="24" y="46" width="98" height="22" rx="11" fill="#dcfce7"/>
+    <text x="36" y="61" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#166534">Hosts available</text>
+    <!-- Backing VM bullet list -->
+    <circle cx="140" cy="57" r="3" fill="#64748b"/>
+    <text x="152" y="61" font-family="Inter, -apple-system, sans-serif" font-size="13" fill="#334155">VM: avd-sh-001 (Standard_D2s_v5)</text>
+  </g>
+
+  <!-- Connectors -->
+  <text x="720" y="180" font-family="Inter, -apple-system, sans-serif" font-size="12" font-weight="900" fill="#64748b" text-anchor="middle" letter-spacing="1">↙ OUTBOUND / PROFILES ↘</text>
+
+  <!-- Three Columns Layer -->
+  <!-- Column 1: Network & outbound internet -->
+  <g transform="translate(76, 212)">
+    <rect width="390" height="260" rx="20" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.5" filter="url(#shadow-sm)"/>
+    <text x="24" y="36" font-family="Inter, -apple-system, sans-serif" font-size="24">🌐</text>
+    <text x="24" y="68" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="800" fill="#0f172a">Network &amp; outbound internet</text>
+    <!-- Chips -->
+    <rect x="24" y="86" width="128" height="22" rx="11" fill="#dcfce7" stroke="#bbf7d0"/>
+    <text x="36" y="101" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#166534">NAT Gateway present</text>
+    <rect x="158" y="86" width="144" height="22" rx="11" fill="#fef3c7" stroke="#fde68a"/>
+    <text x="170" y="101" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#92400e">Private endpoint missing</text>
+    <rect x="24" y="114" width="138" height="22" rx="11" fill="#eaf4ff" stroke="#bfdbfe"/>
+    <text x="36" y="129" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#1e40af">1 session host subnet(s)</text>
+    <!-- List -->
+    <circle cx="28" cy="164" r="3" fill="#64748b"/>
+    <text x="40" y="168" font-family="Inter, -apple-system, sans-serif" font-size="13" fill="#334155">VNet: vnet-avd</text>
+    <circle cx="28" cy="192" r="3" fill="#64748b"/>
+    <text x="40" y="196" font-family="Inter, -apple-system, sans-serif" font-size="13" fill="#334155">NAT: nat-avd</text>
+  </g>
+
+  <!-- Column 2: Hybrid connectivity & DNS -->
+  <g transform="translate(510, 212)">
+    <rect width="390" height="260" rx="20" fill="#ffffff" stroke="#99f6e4" stroke-width="1.5" filter="url(#shadow-sm)"/>
+    <text x="24" y="36" font-family="Inter, -apple-system, sans-serif" font-size="24">🔗</text>
+    <text x="24" y="68" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="800" fill="#0f172a">Hybrid connectivity &amp; DNS</text>
+    <!-- Chips -->
+    <rect x="24" y="86" width="154" height="22" rx="11" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="36" y="101" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#475569">VPN Gateway not discovered</text>
+    <rect x="24" y="114" width="156" height="22" rx="11" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="36" y="129" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#475569">ExpressRoute not discovered</text>
+    <rect x="24" y="142" width="144" height="22" rx="11" fill="#fef3c7" stroke="#fde68a"/>
+    <text x="36" y="157" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#92400e">Private DNS not discovered</text>
+    <!-- Muted List -->
+    <circle cx="28" cy="188" r="3" fill="#94a3b8"/>
+    <text x="40" y="192" font-family="Inter, -apple-system, sans-serif" font-size="13" font-style="italic" fill="#64748b">No VPN Gateway discovered</text>
+    <circle cx="28" cy="212" r="3" fill="#94a3b8"/>
+    <text x="40" y="216" font-family="Inter, -apple-system, sans-serif" font-size="13" font-style="italic" fill="#64748b">No ExpressRoute circuit discovered</text>
+    <circle cx="28" cy="236" r="3" fill="#94a3b8"/>
+    <text x="40" y="240" font-family="Inter, -apple-system, sans-serif" font-size="13" font-style="italic" fill="#64748b">No Private DNS zone discovered</text>
+  </g>
+
+  <!-- Column 3: Profiles / storage -->
+  <g transform="translate(944, 212)">
+    <rect width="390" height="260" rx="20" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.5" filter="url(#shadow-sm)"/>
+    <text x="24" y="36" font-family="Inter, -apple-system, sans-serif" font-size="24">💾</text>
+    <text x="24" y="68" font-family="Inter, -apple-system, sans-serif" font-size="16" font-weight="800" fill="#0f172a">Profiles / storage</text>
+    <!-- Chips -->
+    <rect x="24" y="86" width="128" height="22" rx="11" fill="#eaf4ff" stroke="#bfdbfe"/>
+    <text x="36" y="101" font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="850" fill="#1e40af">1 profile candidate(s)</text>
+    <!-- List -->
+    <circle cx="28" cy="136" r="3" fill="#64748b"/>
+    <text x="40" y="140" font-family="Inter, -apple-system, sans-serif" font-size="13" fill="#334155">Storage: stavdprofiles (Standard_ZRS)</text>
+  </g>
+
+
+  <!-- ==================== BOTTOM SECTION: TECHNICAL INVENTORY ==================== -->
+  <rect x="44" y="540" width="1352" height="570" rx="24" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" filter="url(#shadow)"/>
+  
+  <text x="76" y="584" font-family="Inter, -apple-system, sans-serif" font-size="22" font-weight="850" fill="#0f172a">Technical inventory appendix</text>
+  <text x="76" y="608" font-family="Inter, -apple-system, sans-serif" font-size="13" fill="#64748b">The tables below provide the supporting Azure inventory used to build the customer summary and architecture map.</text>
+
+  <!-- Cost management findings card -->
+  <g transform="translate(76, 630)">
+    <rect width="1288" height="80" rx="14" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
+    <path d="M 0,0 L 0,80" stroke="#f59e0b" stroke-width="4"/>
+    <rect x="18" y="16" width="62" height="20" rx="10" fill="#f59e0b"/>
+    <text x="26" y="30" font-family="Inter, -apple-system, sans-serif" font-size="9" font-weight="900" fill="#ffffff">MEDIUM</text>
+    <text x="90" y="31" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="850" fill="#0f172a">Cost management</text>
+    <text x="18" y="52" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="#334155"><tspan font-weight="700">Observation:</tspan> No AVD scaling plans were discovered</text>
+    <text x="360" y="52" font-family="Inter, -apple-system, sans-serif" font-size="12" fill="#334155"><tspan font-weight="700">Recommended action:</tspan> Document the operating schedule/capacity approach, or configure AVD autoscale for pooled host pools where appropriate.</text>
+  </g>
+
+  <!-- Collapsible Host Pools header -->
+  <g transform="translate(76, 730)">
+    <rect width="1288" height="42" rx="12" fill="#f8fbff" stroke="#e2e8f0" stroke-width="1"/>
+    <!-- Minus/plus icon wrapper -->
+    <circle cx="28" cy="21" r="10" fill="#475569"/>
+    <text x="28" y="24" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle">−</text>
+    <text x="48" y="26" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="850" fill="#5130a7">Host pools</text>
+  </g>
+
+  <!-- Host Pools Table -->
+  <g transform="translate(76, 782)">
+    <rect width="1288" height="74" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    
+    <!-- Table Header -->
+    <rect width="1288" height="32" rx="12" fill="#f1f7ff"/>
+    <!-- Clean table rounded bottom fix by rendering header again without bottom corners -->
+    <rect y="16" width="1288" height="16" fill="#f1f7ff"/>
+    <g font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="900" fill="#344469" letter-spacing="0.5">
+      <text x="20" y="20">SUBSCRIPTION</text>
+      <text x="180" y="20">NAME</text>
+      <text x="340" y="20">RESOURCEGROUP</text>
+      <text x="500" y="20">LOCATION</text>
+      <text x="640" y="20">TYPE</text>
+      <text x="760" y="20">LOADBALANCER</text>
+      <text x="910" y="20">STARTVMONCONNECT</text>
+      <text x="1070" y="20">PUBLICNETWORKACCESS</text>
+      <text x="1220" y="20">TAGS</text>
+    </g>
+    <!-- Divider -->
+    <line x1="0" y1="32" x2="1288" y2="32" stroke="#e2e8f0" stroke-width="1"/>
+
+    <!-- Table Row -->
+    <g font-family="Inter, -apple-system, sans-serif" font-size="12" fill="#334155">
+      <text x="20" y="52">Dry Run Subscription</text>
+      <text x="180" y="52">hp-avd-demo</text>
+      <text x="340" y="52">rg-avd-demo</text>
+      <text x="500" y="52">eastus</text>
+      <text x="640" y="52">Pooled</text>
+      <text x="760" y="52">BreadthFirst</text>
+      <text x="910" y="52">True</text>
+      <text x="1070" y="52">Enabled</text>
+      <text x="1220" y="52" fill="#64748b">Environment=Demo</text>
     </g>
   </g>
 
-  <rect x="44" y="294" width="1352" height="170" rx="18" fill="#ffffff" stroke="#dbe5ef" filter="url(#shadow)"/>
-  <text x="78" y="336" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" font-weight="800" fill="#0f172a">Executive summary</text>
-  <g transform="translate(78,356)" font-family="Inter, Segoe UI, Arial, sans-serif">
-    <g>
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">HOST POOLS</text>
+  <!-- Collapsible Workspaces header -->
+  <g transform="translate(76, 876)">
+    <rect width="1288" height="42" rx="12" fill="#f8fbff" stroke="#e2e8f0" stroke-width="1"/>
+    <!-- Minus/plus icon wrapper -->
+    <circle cx="28" cy="21" r="10" fill="#475569"/>
+    <text x="28" y="24" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle">−</text>
+    <text x="48" y="26" font-family="Inter, -apple-system, sans-serif" font-size="14" font-weight="850" fill="#5130a7">Workspaces</text>
+  </g>
+
+  <!-- Workspaces Table -->
+  <g transform="translate(76, 928)">
+    <rect width="1288" height="74" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    
+    <!-- Table Header -->
+    <rect width="1288" height="32" rx="12" fill="#f1f7ff"/>
+    <!-- Clean bottom corners fix -->
+    <rect y="16" width="1288" height="16" fill="#f1f7ff"/>
+    <g font-family="Inter, -apple-system, sans-serif" font-size="10" font-weight="900" fill="#344469" letter-spacing="0.5">
+      <text x="20" y="20">SUBSCRIPTION</text>
+      <text x="220" y="20">NAME</text>
+      <text x="400" y="20">RESOURCEGROUP</text>
+      <text x="580" y="20">LOCATION</text>
+      <text x="740" y="20">APPLICATIONGROUPS</text>
+      <text x="1220" y="20">TAGS</text>
     </g>
-    <g transform="translate(214,0)">
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">SESSION HOSTS</text>
-    </g>
-    <g transform="translate(428,0)">
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">APP GROUPS</text>
-    </g>
-    <g transform="translate(642,0)">
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">WORKSPACES</text>
-    </g>
-    <g transform="translate(856,0)">
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">VNETS</text>
-    </g>
-    <g transform="translate(1070,0)">
-      <rect width="194" height="74" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-      <text x="16" y="42" font-size="34" font-weight="800" fill="#2563eb">1</text>
-      <text x="16" y="60" font-size="11" font-weight="800" fill="#64748b">IAM ASSIGNMENTS</text>
+    <!-- Divider -->
+    <line x1="0" y1="32" x2="1288" y2="32" stroke="#e2e8f0" stroke-width="1"/>
+
+    <!-- Table Row -->
+    <g font-family="Inter, -apple-system, sans-serif" font-size="12" fill="#334155">
+      <text x="20" y="52">Dry Run Subscription</text>
+      <text x="220" y="52">ws-avd-demo</text>
+      <text x="400" y="52">rg-avd-demo</text>
+      <text x="580" y="52">eastus</text>
+      <text x="740" y="52">Microsoft.DesktopVirtualization/applicationGroups: dag-avd-demo</text>
+      <text x="1220" y="52" fill="#64748b">-</text>
     </g>
   </g>
 
-  <rect x="44" y="486" width="1352" height="300" rx="18" fill="#ffffff" stroke="#dbe5ef" filter="url(#shadow)"/>
-  <text x="78" y="528" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" font-weight="800" fill="#0f172a">Architecture dependency map</text>
-  <rect x="78" y="548" width="1284" height="210" rx="18" fill="#ffffff" stroke="#dbe5ef"/>
-  <g font-family="Inter, Segoe UI, Arial, sans-serif">
-    <rect x="104" y="578" width="375" height="70" rx="14" fill="#fffbeb" stroke="#fde68a"/>
-    <text x="124" y="604" font-size="14" font-weight="800" fill="#0f172a">🔐 Identity / IAM</text>
-    <text x="124" y="628" font-size="12" fill="#334155">1 assignment • 1 AVD-related</text>
-    <rect x="532" y="578" width="375" height="70" rx="14" fill="#eff6ff" stroke="#93c5fd"/>
-    <text x="552" y="604" font-size="14" font-weight="800" fill="#0f172a">🖥 AVD control plane</text>
-    <text x="552" y="628" font-size="12" fill="#334155">Host pools • app groups • workspace</text>
-    <rect x="960" y="578" width="375" height="70" rx="14" fill="#f0fdf4" stroke="#bbf7d0"/>
-    <text x="980" y="604" font-size="14" font-weight="800" fill="#0f172a">📊 Monitoring</text>
-    <text x="980" y="628" font-size="12" fill="#334155">Diagnostics configured • Log Analytics</text>
-    <text x="708" y="675" font-size="24" font-weight="900" fill="#2563eb">↓</text>
-    <rect x="396" y="690" width="648" height="44" rx="14" fill="#ecfeff" stroke="#67e8f9"/>
-    <text x="418" y="718" font-size="14" font-weight="800" fill="#0f172a">⚙ Session host compute</text>
-    <text x="620" y="718" font-size="12" fill="#334155">VMs • NICs • host pool registration</text>
-  </g>
-
-  <g transform="translate(44,808)" font-family="Inter, Segoe UI, Arial, sans-serif">
-    <rect width="430" height="58" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-    <text x="22" y="36" font-size="16" font-weight="800" fill="#1e3a8a">+ Host pools</text>
-    <rect x="462" width="430" height="58" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-    <text x="484" y="36" font-size="16" font-weight="800" fill="#1e3a8a">+ Networking</text>
-    <rect x="924" width="430" height="58" rx="14" fill="#ffffff" stroke="#dbe5ef"/>
-    <text x="946" y="36" font-size="16" font-weight="800" fill="#1e3a8a">+ IAM access summary</text>
-  </g>
 </svg>
