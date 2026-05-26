@@ -1332,7 +1332,7 @@ a { color:inherit; }
 .container { max-width:1280px; margin:0 auto; padding:32px 24px 52px; }
 header.hero {
   display:grid;
-  grid-template-columns:1fr auto 1fr;
+  grid-template-columns:1fr auto;
   align-items:center;
   background:#ffffff;
   border:1px solid rgba(221,214,254,.95);
@@ -1348,8 +1348,8 @@ header.hero::after { display:none; }
 .brand-name { font-size:34px; font-weight:950; letter-spacing:-.06em; color:var(--text); line-height:.95; }
 .brand-name .dot { color:var(--cyan); }
 .brand-sub { font-size:15px; color:#64748b; letter-spacing:.01em; font-weight:650; }
-.report-mark { position:relative; z-index:1; grid-column:2; display:flex; justify-content:center; align-items:center; color:var(--purple); }
-.report-mark .big { font-size:64px; font-weight:950; letter-spacing:-.075em; line-height:.95; text-align:center; white-space:nowrap; }
+.report-mark { position:relative; z-index:1; grid-column:2; display:flex; justify-content:flex-end; align-items:center; color:var(--purple); }
+.report-mark .big { font-size:64px; font-weight:950; letter-spacing:-.075em; line-height:.95; text-align:right; white-space:nowrap; }
 .report-mark .label { display:none; }
 .meta-bar {
 
